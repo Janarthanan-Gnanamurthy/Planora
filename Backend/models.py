@@ -9,6 +9,7 @@ class User(Base):
 
     id = Column(String, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
+    clerkId = Column(String)
 
     # Relationships
     projects = relationship("Project", back_populates="owner")

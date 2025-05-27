@@ -1,14 +1,16 @@
-'use client';
+"use client";
 import { SignUp } from "@clerk/nextjs";
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from "next/navigation";
+import UserSync from "../../../components/UserSync";
 
 export default function SignUpPage() {
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect_url') || '/project';
+  const redirectUrl = searchParams.get("redirect_url") || "/project";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full">
+        <UserSync />
         <SignUp
           appearance={{
             elements: {
@@ -24,4 +26,4 @@ export default function SignUpPage() {
       </div>
     </div>
   );
-} 
+}
