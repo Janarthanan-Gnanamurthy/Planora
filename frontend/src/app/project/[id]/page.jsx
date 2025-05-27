@@ -2,8 +2,8 @@
 import React, { useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import useStore from '@/store/useStore';
-import TaskBoard from '@/components/TaskBoard';
+import useStore from '../../../store/useStore';
+import TaskBoard from '../../../components/TaskBoard';
 
 export default function ProjectPage({ params }) {
   const { isLoaded, isSignedIn, user } = useUser();
@@ -62,7 +62,7 @@ export default function ProjectPage({ params }) {
                   <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
                     {collaborator.name?.charAt(0) || '?'}
                   </div>
-                  <span className="ml-2 text-gray-700">{collaborator.email || 'Unknown User'}</span>
+                  <span className="ml-2 text-gray-700">{collaborator.name || 'Unknown User'}</span>
                 </div>
               ))}
             </div>

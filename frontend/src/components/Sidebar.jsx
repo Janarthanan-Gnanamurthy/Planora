@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
-import useStore from '@/store/useStore';
+import useStore from '../store/useStore';
 import { useRouter } from 'next/navigation';
 
 const Sidebar = () => {

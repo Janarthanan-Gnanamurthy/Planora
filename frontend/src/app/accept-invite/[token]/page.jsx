@@ -7,29 +7,41 @@ import { SignIn } from "@clerk/nextjs";
 
 export default function AcceptInvite({ params }) {
   const [status, setStatus] = useState('loading');
+  const [token, setToken] = useState(null);
   const { isLoaded, isSignedIn, user } = useUser();
   const router = useRouter();
   const { addCollaborator } = useStore();
-  const token = params?.token;
 
-  // Store the token in sessionStorage when the component mounts
+  // Resolve params and extract token
   useEffect(() => {
-    if (token) {
-      sessionStorage.setItem('inviteToken', token);
-    }
-  }, [token]);
+    const resolveParams = async () => {
+      const resolvedParams = await params;
+      const extractedToken = resolvedParams?.token;
+      setToken(extractedToken);
+      
+      // Store the token in sessionStorage when available
+      if (extractedToken && typeof window !== 'undefined') {
+        sessionStorage.setItem('inviteToken', extractedToken);
+      }
+    };
+    
+    resolveParams();
+  }, [params]);
 
   useEffect(() => {
     const processInvitation = async () => {
-      if (!isLoaded) return;
+      if (!isLoaded || !token) return;
 
       if (!isSignedIn) {
         // Don't redirect here, we'll show the sign-in form
         return;
       }
 
-      // Get the token from sessionStorage
-      const storedToken = sessionStorage.getItem('inviteToken');
+      // Get the token from sessionStorage (with window check)
+      const storedToken = typeof window !== 'undefined' 
+        ? sessionStorage.getItem('inviteToken') 
+        : token;
+        
       if (!storedToken) {
         setStatus('error');
         return;
@@ -51,11 +63,13 @@ export default function AcceptInvite({ params }) {
           setStatus('success');
           
           // Clear the stored token
-          sessionStorage.removeItem('inviteToken');
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('inviteToken');
+          }
           
           // Redirect to the project after a short delay
           setTimeout(() => {
-            router.push('/dashboard');
+            router.push('/project');
           }, 2000);
         } else {
           setStatus('error');
@@ -67,7 +81,7 @@ export default function AcceptInvite({ params }) {
     };
 
     processInvitation();
-  }, [isLoaded, isSignedIn, user, router, addCollaborator]);
+  }, [isLoaded, isSignedIn, user, router, addCollaborator, token]);
 
   // If not signed in, show the sign-in form
   if (!isSignedIn) {
@@ -87,7 +101,7 @@ export default function AcceptInvite({ params }) {
             }}
             routing="path"
             path="/sign-in"
-            redirectUrl={window?.location?.href}
+            redirectUrl={typeof window !== 'undefined' ? window.location.href : undefined}
             signUpUrl="/sign-up"
           />
         </div>
@@ -112,7 +126,7 @@ export default function AcceptInvite({ params }) {
               Invitation Accepted!
             </h1>
             <p className="text-gray-600">
-              You have been successfully added to the project. Redirecting to dashboard...
+              You have been successfully added to the project. Redirecting to project...
             </p>
           </div>
         )}
@@ -131,4 +145,4 @@ export default function AcceptInvite({ params }) {
       </div>
     </div>
   );
-} 
+}

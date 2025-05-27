@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react';
 import TaskCard from './TaskCard';
 import CreateTaskModal from './CreateTaskModal';
 import EditTaskModal from './EditTaskModal';
-import useStore from '@/store/useStore';
+import useStore from '../store/useStore';
 
 const TaskBoard = ({ project }) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
