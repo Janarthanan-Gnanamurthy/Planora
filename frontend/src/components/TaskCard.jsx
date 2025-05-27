@@ -16,10 +16,28 @@ const getPriorityColor = (priority) => {
 };
 
 const TaskCard = ({ task, draggable = true }) => {
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return 'Tomorrow';
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+    }
+  };
+
   return (
     <div
       draggable={draggable}
-      className="bg-white p-4 rounded-lg shadow-md cursor-grab active:cursor-grabbing"
+      className="bg-white p-4 rounded-lg shadow-md cursor-grab active:cursor-grabbing hover:shadow-lg transition-shadow"
     >
       <div className="flex justify-between items-start mb-3">
         <h3 className="font-semibold text-gray-800">{task.name}</h3>
@@ -34,14 +52,16 @@ const TaskCard = ({ task, draggable = true }) => {
       
       <div className="space-y-2">
         <div className="flex items-center text-gray-600">
-          <User size={16} className="mr-2" />
-          <span className="text-sm">{task.assignee}</span>
+          <User size={16} className="mr-2 flex-shrink-0" />
+          <span className="text-sm truncate" title={task.assigneeName}>
+            {task.assigneeName}
+          </span>
         </div>
         
         <div className="flex items-center text-gray-600">
-          <Calendar size={16} className="mr-2" />
+          <Calendar size={16} className="mr-2 flex-shrink-0" />
           <span className="text-sm">
-            {new Date(task.deadline).toLocaleDateString()}
+            {formatDate(task.deadline)}
           </span>
         </div>
       </div>

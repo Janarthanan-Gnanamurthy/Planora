@@ -1,24 +1,25 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
-const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
+const EditTaskModal = ({ isOpen, onClose, onSubmit, task, projectUsers }) => {
   const [taskData, setTaskData] = useState({
     name: '',
     priority: 'medium',
+    status: 'todo',
     assignee: '',
-    deadline: '',
+    deadline: ''
   });
+
+  useEffect(() => {
+    if (task) {
+      setTaskData(task);
+    }
+  }, [task]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmit(taskData);
-    setTaskData({
-      name: '',
-      priority: 'medium',
-      assignee: '',
-      deadline: '',
-    });
     onClose();
   };
 
@@ -37,7 +38,7 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
     >
       <div className="bg-white rounded-lg p-6 w-full max-w-md relative transform transition-all duration-300 ease-in-out">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-800">Create New Task</h2>
+          <h2 className="text-xl font-bold text-gray-800">Edit Task</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 transition-colors"
@@ -82,6 +83,23 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
+            <select
+              value={taskData.status}
+              onChange={(e) =>
+                setTaskData({ ...taskData, status: e.target.value })
+              }
+              className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            >
+              <option value="todo">To Do</option>
+              <option value="doing">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Assignee
             </label>
             <select
@@ -94,7 +112,7 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
             >
               <option value="">Select assignee</option>
               {projectUsers?.map((user) => (
-                <option key={`create_task_user_${user.id}`} value={user.id}>
+                <option key={`edit_task_user_${user.id}`} value={user.id}>
                   {user.name}
                 </option>
               ))}
@@ -113,7 +131,6 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
                 setTaskData({ ...taskData, deadline: e.target.value })
               }
               className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              min={new Date().toISOString().split('T')[0]}
             />
           </div>
 
@@ -129,7 +146,7 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
               type="submit"
               className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
             >
-              Create Task
+              Save Changes
             </button>
           </div>
         </form>
@@ -138,4 +155,4 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
   );
 };
 
-export default CreateTaskModal; 
+export default EditTaskModal; 
