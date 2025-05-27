@@ -11,11 +11,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     pass
 
-class User(UserBase): # Response model
-    id: str
 
-    class Config:
-        from_attributes = True # For Pydantic V2, replaces orm_mode = True
 
 
 # --- Project Schemas ---
@@ -25,15 +21,24 @@ class ProjectBase(BaseModel):
 
 class ProjectCreate(ProjectBase):
     owner_id: str # Required for creating a project
+    collaborators: List[str]
 
 class Project(ProjectBase): # Response model
     id: str
     owner_id: str
+    collaborators: Optional[List[str]] = None
     # To include the full owner object in responses, you could add:
     # owner: User
 
     class Config:
         from_attributes = True
+
+class User(UserBase): # Response model
+    id: str
+    projects: List[Project] = []
+
+    class Config:
+        from_attributes = True # For Pydantic V2, replaces orm_mode = True
 
 
 # --- Task Schemas ---

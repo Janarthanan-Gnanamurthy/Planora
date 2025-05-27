@@ -25,6 +25,7 @@ class Project(Base):
     name = Column(String, index=True, nullable=False)
     description = Column(Text, nullable=True)
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+    collaborators = Column(String, nullable=True)  # Store as comma-separated string of user IDs
 
     # Relationships
     owner = relationship("User", back_populates="projects")
