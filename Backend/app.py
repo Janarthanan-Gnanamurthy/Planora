@@ -5,6 +5,8 @@ from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Dict
 import uuid
 import os
+from fastapi.middleware.cors import CORSMiddleware
+
 import google.generativeai as genai
 
 # Import database setup, models, and schemas
@@ -13,7 +15,7 @@ import database, models, schemas # Use relative imports if files are in the same
 # --- CONFIG ---
 # Ensure GOOGLE_API_KEY is set in your environment variables
 try:
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY","AIzaSyDHKg9AFSfhOgBT_gyUQKQwB4-0N8MvlSQ"))
     model = genai.GenerativeModel('gemini-2.0-flash') # or 'gemini-pro'
 except Exception as e:
     print(f"Error configuring Gemini SDK: {e}. AI features might not work.")
@@ -22,6 +24,19 @@ except Exception as e:
 
 # --- FASTAPI APP INITIALIZATION ---
 app = FastAPI(title="AI Project Management Backend with RDS")
+
+# origins = [
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000"
+# ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["*"] to allow all (not recommended for production)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Create database tables on startup
 # In a production environment, you would typically use Alembic for migrations.
@@ -45,7 +60,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)
         raise HTTPException(status_code=400, detail="Username already registered")
     
     user_id = str(uuid.uuid4())
-    db_user = models.User(id=user_id, username=user.username)
+    db_user = models.User(id=user_id, username=user.username, clerkId=user.clerkId)
     
     try:
         db.add(db_user)
@@ -349,3 +364,4 @@ def root():
 # 4. Set up your .env file with DATABASE_URL and GOOGLE_API_KEY
 # 5. Run Uvicorn: uvicorn app.main:app --reload (if main.py is in 'app' directory)
 #    or uvicorn main:app --reload (if main.py is in the root)
+

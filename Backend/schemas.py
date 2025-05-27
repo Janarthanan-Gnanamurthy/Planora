@@ -5,6 +5,8 @@ from typing import List, Optional
 # --- User Schemas ---
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
+    clerkId: str = Field(..., min_length=3, max_length=50)
+    
 
 class UserCreate(UserBase):
     pass

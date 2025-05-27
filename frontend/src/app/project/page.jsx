@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { Plus } from 'lucide-react';
-import useStore from '@/store/useStore';
+import useStore from '../../store/useStore';
 import { useRouter } from 'next/navigation';
 
 export default function ProjectPage() {
