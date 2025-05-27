@@ -1,135 +1,332 @@
-from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel, Field
+# main.py
+from fastapi import FastAPI, HTTPException, Body, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Dict
 import uuid
-import requests
-import google.generativeai as genai
 import os
+import google.generativeai as genai
+
+# Import database setup, models, and schemas
+import database, models, schemas # Use relative imports if files are in the same package/directory
 
 # --- CONFIG ---
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE"  # Replace with your Gemini API key
+# Ensure GOOGLE_API_KEY is set in your environment variables
+try:
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY", "GOOGLE_API_KEY = AIzaSyAugIc0rqrK00TBo9lpA7A6hGq3s77wMmE"))
+    model = genai.GenerativeModel('gemini-2.0-flash') # or 'gemini-pro'
+except Exception as e:
+    print(f"Error configuring Gemini SDK: {e}. AI features might not work.")
+    model = None
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel('gemini-2.0-flash')
 
-app = FastAPI(title="AI Project Management Backend")
+# --- FASTAPI APP INITIALIZATION ---
+app = FastAPI(title="AI Project Management Backend with RDS")
 
-# --- DATA MODELS ---
-class User(BaseModel):
-    id: str
-    username: str
+# Create database tables on startup
+# In a production environment, you would typically use Alembic for migrations.
+try:
+    models.Base.metadata.create_all(bind=database.engine)
+    print("Database tables created or already exist.")
+except Exception as e:
+    print(f"Error creating database tables: {e}")
 
-class Project(BaseModel):
-    id: str
-    name: str
-    description: Optional[str] = None
-    owner_id: str
-
-class Task(BaseModel):
-    id: str
-    project_id: str
-    title: str
-    description: Optional[str] = None
-    assigned_to: Optional[str] = None
-    status: str = "todo"  # todo, in_progress, done
-
-class Comment(BaseModel):
-    id: str
-    task_id: str
-    user_id: str
-    content: str
-
-# --- IN-MEMORY STORAGE ---
-users: Dict[str, User] = {}
-projects: Dict[str, Project] = {}
-tasks: Dict[str, Task] = {}
-comments: Dict[str, Comment] = {}
 
 # --- CRUD ENDPOINTS ---
-# Users
-@app.post("/users", response_model=User)
-def create_user(username: str = Body(...)):
-    user_id = str(uuid.uuid4())
-    user = User(id=user_id, username=username)
-    users[user_id] = user
-    return user
 
-@app.get("/users", response_model=List[User])
-def list_users():
-    return list(users.values())
+# Users
+@app.post("/users", response_model=schemas.User, status_code=201, tags=["Users"])
+def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    """
+    Create a new user. Username must be unique.
+    """
+    db_user_check = db.query(models.User).filter(models.User.username == user.username).first()
+    if db_user_check:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    user_id = str(uuid.uuid4())
+    db_user = models.User(id=user_id, username=user.username)
+    
+    try:
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+    except IntegrityError: # Catch potential race conditions for unique username
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username already registered (race condition)")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not create user: {str(e)}")
+    return db_user
+
+@app.get("/users", response_model=List[schemas.User], tags=["Users"])
+def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+    """
+    Retrieve a list of users with pagination.
+    """
+    users = db.query(models.User).offset(skip).limit(limit).all()
+    return users
+
+@app.get("/users/{user_id}", response_model=schemas.User, tags=["Users"])
+def get_user(user_id: str, db: Session = Depends(database.get_db)):
+    """
+    Retrieve a specific user by ID.
+    """
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
 
 # Projects
-@app.post("/projects", response_model=Project)
-def create_project(name: str = Body(...), description: Optional[str] = Body(None), owner_id: str = Body(...)):
-    if owner_id not in users:
-        raise HTTPException(status_code=404, detail="Owner not found")
+@app.post("/projects", response_model=schemas.Project, status_code=201, tags=["Projects"])
+def create_project(project: schemas.ProjectCreate, db: Session = Depends(database.get_db)):
+    """
+    Create a new project. Owner must exist.
+    """
+    db_owner = db.query(models.User).filter(models.User.id == project.owner_id).first()
+    if not db_owner:
+        raise HTTPException(status_code=404, detail=f"Owner with id {project.owner_id} not found")
+    
     project_id = str(uuid.uuid4())
-    project = Project(id=project_id, name=name, description=description, owner_id=owner_id)
-    projects[project_id] = project
-    return project
+    db_project = models.Project(
+        id=project_id,
+        name=project.name,
+        description=project.description,
+        owner_id=project.owner_id
+    )
+    try:
+        db.add(db_project)
+        db.commit()
+        db.refresh(db_project)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not create project: {str(e)}")
+    return db_project
 
-@app.get("/projects", response_model=List[Project])
-def list_projects():
-    return list(projects.values())
+@app.get("/projects", response_model=List[schemas.Project], tags=["Projects"])
+def list_projects(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+    """
+    Retrieve a list of projects with pagination.
+    """
+    projects = db.query(models.Project).offset(skip).limit(limit).all()
+    return projects
+
+@app.get("/projects/{project_id}", response_model=schemas.Project, tags=["Projects"])
+def get_project(project_id: str, db: Session = Depends(database.get_db)):
+    """
+    Retrieve a specific project by ID.
+    """
+    db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
+    if db_project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return db_project
 
 # Tasks
-@app.post("/tasks", response_model=Task)
-def create_task(project_id: str = Body(...), title: str = Body(...), description: Optional[str] = Body(None), assigned_to: Optional[str] = Body(None)):
-    if project_id not in projects:
-        raise HTTPException(status_code=404, detail="Project not found")
-    task_id = str(uuid.uuid4())
-    task = Task(id=task_id, project_id=project_id, title=title, description=description, assigned_to=assigned_to)
-    tasks[task_id] = task
-    return task
+@app.post("/tasks", response_model=schemas.Task, status_code=201, tags=["Tasks"])
+def create_task(task: schemas.TaskCreate, db: Session = Depends(database.get_db)):
+    """
+    Create a new task. Project must exist. If assigned_to is provided, user must exist.
+    """
+    db_project = db.query(models.Project).filter(models.Project.id == task.project_id).first()
+    if not db_project:
+        raise HTTPException(status_code=404, detail=f"Project with id {task.project_id} not found")
 
-@app.get("/tasks", response_model=List[Task])
-def list_tasks():
-    return list(tasks.values())
+    if task.assigned_to:
+        db_assignee = db.query(models.User).filter(models.User.id == task.assigned_to).first()
+        if not db_assignee:
+            raise HTTPException(status_code=404, detail=f"Assignee user with id {task.assigned_to} not found")
+    
+    task_id = str(uuid.uuid4())
+    db_task = models.Task(
+        id=task_id,
+        project_id=task.project_id,
+        title=task.title,
+        description=task.description,
+        assigned_to_id=task.assigned_to, # Maps Pydantic's 'assigned_to' to SQLAlchemy's 'assigned_to_id'
+        status=task.status
+    )
+    try:
+        db.add(db_task)
+        db.commit()
+        db.refresh(db_task)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not create task: {str(e)}")
+    return db_task
+
+@app.get("/tasks", response_model=List[schemas.Task], tags=["Tasks"])
+def list_tasks(
+    project_id: Optional[str] = None, 
+    assigned_to_id: Optional[str] = None,
+    status: Optional[str] = None,
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(database.get_db)
+):
+    """
+    Retrieve a list of tasks with pagination and optional filtering.
+    """
+    query = db.query(models.Task)
+    if project_id:
+        query = query.filter(models.Task.project_id == project_id)
+    if assigned_to_id:
+        query = query.filter(models.Task.assigned_to_id == assigned_to_id)
+    if status:
+        query = query.filter(models.Task.status == status)
+    
+    tasks = query.offset(skip).limit(limit).all()
+    return tasks
+
+
+@app.get("/tasks/{task_id}", response_model=schemas.Task, tags=["Tasks"])
+def get_task(task_id: str, db: Session = Depends(database.get_db)):
+    """
+    Retrieve a specific task by ID.
+    """
+    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if db_task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return db_task
+
+@app.put("/tasks/{task_id}", response_model=schemas.Task, tags=["Tasks"])
+def update_task(task_id: str, task_update: schemas.TaskUpdate, db: Session = Depends(database.get_db)):
+    """
+    Update an existing task.
+    """
+    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if db_task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    update_data = task_update.dict(exclude_unset=True)
+
+    if "assigned_to" in update_data and update_data["assigned_to"] is not None:
+        db_assignee = db.query(models.User).filter(models.User.id == update_data["assigned_to"]).first()
+        if not db_assignee:
+            raise HTTPException(status_code=404, detail=f"Assignee user with id {update_data['assigned_to']} not found")
+        db_task.assigned_to_id = update_data["assigned_to"] # Map to DB model field
+        del update_data["assigned_to"] # Remove from dict to avoid direct assignment
+
+    for key, value in update_data.items():
+        setattr(db_task, key, value)
+    
+    try:
+        db.commit()
+        db.refresh(db_task)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not update task: {str(e)}")
+    return db_task
+
+
+@app.delete("/tasks/{task_id}", status_code=204, tags=["Tasks"])
+def delete_task(task_id: str, db: Session = Depends(database.get_db)):
+    """
+    Delete a task by ID.
+    """
+    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if db_task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    try:
+        db.delete(db_task)
+        db.commit()
+    except Exception as e: # Catch potential errors, e.g. foreign key constraints if not handled by cascade
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not delete task: {str(e)}")
+    return None # No content for 204
+
 
 # Comments
-@app.post("/comments", response_model=Comment)
-def create_comment(task_id: str = Body(...), user_id: str = Body(...), content: str = Body(...)):
-    if task_id not in tasks:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if user_id not in users:
-        raise HTTPException(status_code=404, detail="User not found")
-    comment_id = str(uuid.uuid4())
-    comment = Comment(id=comment_id, task_id=task_id, user_id=user_id, content=content)
-    comments[comment_id] = comment
-    return comment
+@app.post("/comments", response_model=schemas.Comment, status_code=201, tags=["Comments"])
+def create_comment(comment: schemas.CommentCreate, db: Session = Depends(database.get_db)):
+    """
+    Create a new comment. Task and User must exist.
+    """
+    db_task = db.query(models.Task).filter(models.Task.id == comment.task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail=f"Task with id {comment.task_id} not found")
+    
+    db_user = db.query(models.User).filter(models.User.id == comment.user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail=f"User with id {comment.user_id} not found")
 
-@app.get("/comments", response_model=List[Comment])
-def list_comments():
-    return list(comments.values())
+    comment_id = str(uuid.uuid4())
+    db_comment = models.Comment(
+        id=comment_id,
+        task_id=comment.task_id,
+        user_id=comment.user_id,
+        content=comment.content
+    )
+    try:
+        db.add(db_comment)
+        db.commit()
+        db.refresh(db_comment)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not create comment: {str(e)}")
+    return db_comment
+
+@app.get("/comments", response_model=List[schemas.Comment], tags=["Comments"])
+def list_comments(
+    task_id: Optional[str] = None, 
+    user_id: Optional[str] = None,
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(database.get_db)
+):
+    """
+    Retrieve a list of comments with pagination and optional filtering by task or user.
+    """
+    query = db.query(models.Comment)
+    if task_id:
+        query = query.filter(models.Comment.task_id == task_id)
+    if user_id:
+        query = query.filter(models.Comment.user_id == user_id)
+    
+    comments = query.offset(skip).limit(limit).all()
+    return comments
+
 
 # --- AI ENDPOINTS ---
 def call_gemini(prompt: str) -> str:
+    """
+    Helper function to call the Gemini API.
+    Returns the generated text or an error message.
+    """
+    if model is None:
+        return "Gemini model not initialized. Please check API key and configuration."
     try:
         response = model.generate_content(prompt)
-        return response.text
+        # Ensure response.text is accessed safely
+        if response and hasattr(response, 'text'):
+            return response.text
+        elif response and response.candidates and response.candidates[0].content.parts:
+             return response.candidates[0].content.parts[0].text
+        else:
+            return "Gemini response format not recognized or empty."
     except Exception as e:
         return f"Gemini SDK error: {str(e)}"
 
-@app.post("/ai/summarize_task")
-def ai_summarize_task(description: str = Body(...)):
-    prompt = f"Summarize this task description: {description}"
+@app.post("/ai/summarize_task", tags=["AI"])
+def ai_summarize_task(description: str = Body(..., embed=True)):
+    prompt = f"Summarize this task description concisely: {description}"
     summary = call_gemini(prompt)
     return {"summary": summary}
 
-@app.post("/ai/suggest_tasks")
-def ai_suggest_tasks(project_description: str = Body(...)):
-    prompt = f"Suggest 3 tasks for this project: {project_description}"
+@app.post("/ai/suggest_tasks", tags=["AI"])
+def ai_suggest_tasks(project_description: str = Body(..., embed=True)):
+    prompt = f"Based on this project description, suggest exactly 3 actionable tasks with clear titles. Format as a numbered list:\n\nProject: {project_description}"
     suggestions = call_gemini(prompt)
     return {"suggested_tasks": suggestions}
 
-@app.post("/ai/analyze_comment")
-def ai_analyze_comment(comment: str = Body(...)):
-    prompt = f"Analyze the sentiment and actionability of this comment: {comment}"
+@app.post("/ai/analyze_comment", tags=["AI"])
+def ai_analyze_comment(comment_content: str = Body(..., alias="comment", embed=True)): # Changed alias for clarity
+    prompt = f"Analyze the sentiment (Positive, Negative, Neutral) and identify any action items in this comment. Provide a brief analysis.\n\nComment: {comment_content}"
     analysis = call_gemini(prompt)
     return {"analysis": analysis}
 
-@app.post("/ai/complex_task_assistant")
-def ai_complex_task_assistant(query: str = Body(...)):
+@app.post("/ai/complex_task_assistant", tags=["AI"])
+def ai_complex_task_assistant(query: str = Body(..., embed=True)):
     prompt = (
         "You are an expert project management assistant. "
         "Answer the following user question with actionable, clear advice. "
@@ -140,6 +337,15 @@ def ai_complex_task_assistant(query: str = Body(...)):
     return {"answer": answer}
 
 # --- ROOT ENDPOINT ---
-@app.get("/")
+@app.get("/", tags=["Root"])
 def root():
-    return {"message": "AI Project Management Backend running!"}
+    return {"message": "AI Project Management Backend with RDS running!"}
+
+# To run this application (assuming you save it as main.py in an 'app' directory,
+# with database.py, models.py, schemas.py alongside):
+# 1. Create a virtual environment: python -m venv venv
+# 2. Activate it: source venv/bin/activate (Linux/macOS) or venv\Scripts\activate (Windows)
+# 3. Install dependencies: pip install fastapi uvicorn sqlalchemy psycopg2-binary python-dotenv google-generativeai
+# 4. Set up your .env file with DATABASE_URL and GOOGLE_API_KEY
+# 5. Run Uvicorn: uvicorn app.main:app --reload (if main.py is in 'app' directory)
+#    or uvicorn main:app --reload (if main.py is in the root)
