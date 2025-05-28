@@ -1,6 +1,8 @@
 # schemas.py
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
+import uuid
+import os
 
 # --- User Schemas ---
 class UserBase(BaseModel):
@@ -52,10 +54,10 @@ class TaskCreate(TaskBase):
     assigned_to: Optional[str] = None # This will be the user_id
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    title: Optional[str] = None
     description: Optional[str] = None
-    assigned_to: Optional[str] = None # This will be the user_id
-    status: Optional[str] = Field(None, pattern="^(todo|in_progress|done)$")
+    assigned_to: Optional[str] = None # Use Optional[str] for nullable FK
+    status: Optional[str] = None
 
 
 class Task(TaskBase): # Response model
@@ -88,3 +90,15 @@ class Comment(CommentBase): # Response model
 
     class Config:
         from_attributes = True
+
+# AI Endpoints Schemas (if needed, though AI functions often use simple types directly)
+# For example, if you had complex AI request/response objects
+
+# New schema for adding collaborators
+class ProjectAddCollaborators(BaseModel):
+    project_id: str
+    collaborator_ids: List[str]
+
+# New schema for just a list of collaborator IDs
+class CollaboratorIds(BaseModel):
+    collaborator_ids: List[str]

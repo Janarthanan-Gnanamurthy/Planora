@@ -1,5 +1,5 @@
 # models.py
-from sqlalchemy import Column, String, ForeignKey, Text
+from sqlalchemy import Column, String, ForeignKey, Text, ARRAY
 from sqlalchemy.orm import relationship
 from database import Base # Assuming database.py is in the same directory (e.g., app/database.py)
 from typing import Optional
@@ -25,7 +25,7 @@ class Project(Base):
     name = Column(String, index=True, nullable=False)
     description = Column(Text, nullable=True)
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
-    collaborators = Column(String, nullable=True)  # Store as comma-separated string of user IDs
+    collaborators = Column(ARRAY(String), nullable=True) # Store as comma-separated string of user IDs
 
     # Relationships
     owner = relationship("User", back_populates="projects")

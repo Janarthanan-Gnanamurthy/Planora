@@ -107,7 +107,6 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(databas
         id=project_id,
         name=project.name,
         description=project.description,
-        collaborators=project.collaborators,
         owner_id=project.owner_id
     )
     try:
@@ -135,6 +134,40 @@ def get_project(project_id: str, db: Session = Depends(database.get_db)):
     db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
     if db_project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    return db_project
+
+@app.post("/projects/add-collaborators", response_model=schemas.Project, tags=["Projects"])
+def add_collaborators_to_project(
+    data: schemas.ProjectAddCollaborators, db: Session = Depends(database.get_db)
+):
+    """
+    Add collaborators to a project. Replaces the current list of collaborators with the provided list.
+    """
+    db_project = db.query(models.Project).filter(models.Project.id == data.project_id).first()
+    if not db_project:
+        raise HTTPException(status_code=404, detail=f"Project with id {data.project_id} not found")
+
+    # Validate all user IDs exist
+    # for user_id in data.collaborator_ids:
+    #     db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    #     if not db_user:
+    #         raise HTTPException(status_code=404, detail=f"Collaborator user with id {user_id} not found")
+
+    # Get existing collaborators or initialize empty list
+    existing_collaborators = db_project.collaborators or []
+    
+    # Add new collaborators, avoiding duplicates
+    new_collaborators = list(set(existing_collaborators + data.collaborator_ids))
+    
+    # Update the project's collaborators
+    db_project.collaborators = new_collaborators
+    try:
+        db.commit()
+        db.refresh(db_project)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not update collaborators: {str(e)}")
+
     return db_project
 
 # Tasks
