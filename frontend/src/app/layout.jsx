@@ -17,8 +17,8 @@ export default function RootLayout({ children }) {
     <ClerkProvider>
       <html lang="en">
         <body className={inter.className}>
+          <UserSync />
           <Navbar />
-
           <main>{children}</main>
         </body>
       </html>

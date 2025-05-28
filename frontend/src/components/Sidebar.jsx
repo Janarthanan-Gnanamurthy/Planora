@@ -1,26 +1,45 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
-import useStore from '../store/useStore';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import { createProject, getProjects, getUserByClerkId } from '../services/api';
 
 const Sidebar = () => {
   const { user } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteStatus, setInviteStatus] = useState('');
+  const [projects, setProjects] = useState([]);
   
-  const { projects, addProject, setSelectedProject, selectedProjectId, getSelectedProject } = useStore();
-  const selectedProject = getSelectedProject();
+  // Get the current project ID from the URL
+  const currentProjectId = pathname.startsWith('/project/') 
+    ? pathname.split('/')[2] 
+    : null;
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const projectsList = await getProjects();
+        console.log('Fetched projects:', projectsList);
+        setProjects(projectsList);
+      } catch (error) {
+        console.error('Failed to fetch projects:', error);
+      }
+    };
+
+    if (user) {
+      fetchProjects();
+    }
+  }, [user]);
 
   const getInitials = (name) => {
-    // Handle undefined, null, or empty name
     if (!name || typeof name !== 'string') {
-      return '?'; // Return a fallback character
+      return '?';
     }
     
     return name.split(' ')
@@ -29,29 +48,42 @@ const Sidebar = () => {
       .toUpperCase();
   };
 
-  const handleAddProject = (e) => {
+  const handleAddProject = async (e) => {
     e.preventDefault();
     if (newProjectName.trim()) {
-      const newProject = {
-        id: Date.now().toString(),
-        name: newProjectName,
-        tasks: [],
-        createdBy: {
-          id: user.id,
-          name: user.fullName,
-          email: user.primaryEmailAddress.emailAddress
-        },
-      };
-      addProject(newProject);
-      setNewProjectName('');
-      setIsAddingProject(false);
-      router.push(`/project/${newProject.id}`);
+      try {
+        // First get the database user ID using clerkId
+        console.log('Getting user by clerkId:', user.id);
+        const dbUser = await getUserByClerkId(user.id);
+        console.log('Database user:', dbUser);
+
+        if (!dbUser) {
+          console.error('User not found in database');
+          return;
+        }
+
+        console.log('Creating project with owner_id:', dbUser.id);
+        const newProject = await createProject({
+          name: newProjectName,
+          description: '',
+          owner_id: dbUser.id // Use the database user ID
+        });
+        
+        console.log('Created project:', newProject);
+        setProjects([...projects, newProject]);
+        setNewProjectName('');
+        setIsAddingProject(false);
+        
+        router.push(`/project/${newProject.id.replace(/-/g, '_')}`);
+      } catch (error) {
+        console.error('Failed to create project:', error);
+      }
     }
   };
 
   const handleInviteSubmit = async (e) => {
     e.preventDefault();
-    if (!inviteEmail.trim() || !selectedProjectId) return;
+    if (!inviteEmail.trim() || !currentProjectId) return;
 
     try {
       setInviteStatus('sending');
@@ -62,8 +94,8 @@ const Sidebar = () => {
         },
         body: JSON.stringify({
           email: inviteEmail,
-          projectId: selectedProjectId,
-          projectName: selectedProject.name,
+          projectId: currentProjectId,
+          projectName: projects.find(p => p.id === currentProjectId)?.name,
           inviterName: user.fullName,
         }),
       });
@@ -95,27 +127,25 @@ const Sidebar = () => {
             <div
               key={project.id}
               onClick={() => {
-                setSelectedProject(project.id);
-                router.push(`/project/${project.id}`);
+                router.push(`/project/${project.id.replace(/-/g, '_')}`);
               }}
               className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                selectedProjectId === project.id
+                currentProjectId === project.id
                   ? 'bg-blue-600'
                   : 'hover:bg-gray-800'
               }`}
             >
               <h3 className="font-medium">{project.name}</h3>
               <div className="mt-2 flex flex-wrap gap-1">
-              {project.collaborators?.map((collaborator, index) => (
-  <div
-    key={collaborator.id || `collaborator-${index}`}
-    className="bg-gray-700 px-2 py-1 rounded text-xs"
-    title={collaborator.name || 'Unknown User'}
-  >
-    {getInitials(collaborator.name || 'Unknown User')}
-  </div>
-))}
-                
+                {project.collaborators?.map((collaborator, index) => (
+                  <div
+                    key={collaborator.id || `collaborator-${index}`}
+                    className="bg-gray-700 px-2 py-1 rounded text-xs"
+                    title={collaborator.name || 'Unknown User'}
+                  >
+                    {getInitials(collaborator.name || 'Unknown User')}
+                  </div>
+                ))}
               </div>
             </div>
           ))}
@@ -158,7 +188,7 @@ const Sidebar = () => {
         )}
       </div>
 
-      {selectedProjectId && (
+      {currentProjectId && (
         <div className="mt-auto pt-4 border-t border-gray-800">
           <button
             onClick={() => setShowInviteModal(true)}

@@ -1,10 +1,10 @@
-'use client';
+"use client";
 import { SignIn } from "@clerk/nextjs";
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from "next/navigation";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect_url') || '/project';
+  const redirectUrl = searchParams.get("redirect_url") || "/project";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -24,4 +24,4 @@ export default function SignInPage() {
       </div>
     </div>
   );
-} 
+}
