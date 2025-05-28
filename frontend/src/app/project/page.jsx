@@ -1,114 +1,322 @@
-'use client';
-import { useState } from 'react';
-import { useUser } from '@clerk/nextjs';
-import { Plus } from 'lucide-react';
-import useStore from '../../store/useStore';
-import { useRouter } from 'next/navigation';
+"use client";
+import { useState, useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
+import { Plus, Users, Calendar, MoreVertical } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  createProject,
+  getProjects,
+  getUserByClerkId,
+  getUsers,
+} from "../../services/api";
 
 export default function ProjectPage() {
   const { user } = useUser();
   const router = useRouter();
-  const { projects } = useStore();
+  const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
   const [isCreating, setIsCreating] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleCreateProject = (e) => {
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [projectsList, usersList] = await Promise.all([
+          getProjects(),
+          getUsers(),
+        ]);
+        setProjects(projectsList);
+        setUsers(usersList);
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleAddProject = async (e) => {
     e.preventDefault();
     if (newProjectName.trim()) {
-      const newProject = {
-        id: Date.now().toString(),
-        name: newProjectName,
-        tasks: [],
-        createdBy: {
-          id: user.id,
-          name: user.fullName,
-          email: user.primaryEmailAddress.emailAddress
-        },
-      };
-      useStore.getState().addProject(newProject);
-      setNewProjectName('');
-      setIsCreating(false);
-      router.push(`/project/${newProject.id}`);
+      try {
+        // First get the database user ID using clerkId
+        console.log("Getting user by clerkId:", user.id);
+        const dbUser = await getUserByClerkId(user.id);
+
+        console.log("Database user:", dbUser);
+
+        if (!dbUser) {
+          console.error("User not found in database");
+          return;
+        }
+
+        console.log("Creating project with owner_id:", dbUser.id);
+        const newProject = await createProject({
+          name: newProjectName,
+          description: newProjectDesc,
+          owner_id: dbUser.id, // Use the database user ID,
+          collaborators: [dbUser.id],
+        });
+
+        console.log("Created project:", newProject);
+        setProjects([...projects, newProject]);
+        setNewProjectName("");
+        setNewProjectDesc("");
+        setIsCreating(false);
+
+        router.push(`/project/${newProject.id.replace(/-/g, "_")}`);
+      } catch (error) {
+        console.error("Failed to create project:", error);
+      }
     }
   };
 
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">My Projects</h1>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus size={20} />
-          New Project
-        </button>
-      </div>
+  const getUserName = (userId) => {
+    const user = users.find((u) => u.id === userId);
+    return user?.username || "Unknown User";
+  };
 
-      {isCreating && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Create New Project</h2>
-            <form onSubmit={handleCreateProject}>
-              <input
-                type="text"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="Project name"
-                className="w-full p-2 border rounded-md mb-4"
-                autoFocus
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreating(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Create Project
+  const getUserInitials = (userId) => {
+    const user = users.find((u) => u.id === userId);
+    if (!user || !user.username) return "?";
+
+    const names = user.username.split(" ");
+    if (names.length >= 2) {
+      return `${names[0][0]}${names[1][0]}`.toUpperCase();
+    }
+    return user.username.substring(0, 2).toUpperCase();
+  };
+
+  const getInitialsColor = (userId) => {
+    const colors = [
+      "bg-blue-500",
+      "bg-green-500",
+      "bg-purple-500",
+      "bg-pink-500",
+      "bg-indigo-500",
+      "bg-orange-500",
+      "bg-teal-500",
+      "bg-red-500",
+    ];
+    const index = userId ? userId.toString().charCodeAt(0) % colors.length : 0;
+    return colors[index];
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <p className="text-gray-600 font-medium">Loading projects...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-6">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
+            <p className="text-gray-600 mt-1">
+              Manage and collaborate on your projects
+            </p>
+          </div>
+          <button
+            onClick={() => setIsCreating(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          >
+            <Plus size={20} />
+            New Project
+          </button>
+        </div>
+
+        {/* Create Project Modal */}
+        {isCreating && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">
+                Create New Project
+              </h2>
+              <form onSubmit={handleAddProject} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Project Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="Enter project name"
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+                    autoFocus
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    value={newProjectDesc}
+                    onChange={(e) => setNewProjectDesc(e.target.value)}
+                    placeholder="Enter project description (optional)"
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors resize-none"
+                    rows={4}
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreating(false);
+                      setNewProjectName("");
+                      setNewProjectDesc("");
+                    }}
+                    className="flex-1 px-6 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium shadow-lg"
+                  >
+                    Create Project
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Projects Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {projects.map((project) => (
+            <div
+              key={project.id}
+              onClick={() =>
+                router.push(`/project/${project.id.replace(/-/g, "_")}`)
+              }
+              className="group bg-white p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1"
+            >
+              {/* Project Header */}
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
+                    {project.name}
+                  </h3>
+                  {project.description && (
+                    <p className="text-gray-600 text-sm leading-relaxed line-clamp-2">
+                      {project.description}
+                    </p>
+                  )}
+                </div>
+                <button className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-gray-100 rounded-lg">
+                  <MoreVertical size={16} className="text-gray-400" />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {projects.map((project) => (
-          <div
-            key={project.id}
-            onClick={() => router.push(`/project/${project.id}`)}
-            className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-          >
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">{project.name}</h3>
-            <div className="flex items-center text-gray-600">
-              <span className="text-sm">
-                {project.tasks?.length || 0} tasks
-              </span>
-              <span className="mx-2">•</span>
-              <span className="text-sm">
-                {project.collaborators?.length || 0} members
-              </span>
-            </div>
-            <div className="mt-4 flex -space-x-2">
-              {project.collaborators?.map((collaborator) => (
-                <div
-                  key={collaborator.id}
-                  className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm border-2 border-white"
-                  title={collaborator.name}
-                >
-                  {collaborator.name.charAt(0)}
+              {/* Project Stats */}
+              <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
+                <div className="flex items-center gap-1">
+                  <Calendar size={14} />
+                  <span>Created recently</span>
                 </div>
-              ))}
+                <div className="flex items-center gap-1">
+                  <Users size={14} />
+                  <span>{project.collaborators?.length || 1} members</span>
+                </div>
+              </div>
+
+              {/* Owner and Collaborators */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">
+                    Owner
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${getInitialsColor(
+                        project.owner_id
+                      )}`}
+                    >
+                      {getUserInitials(project.owner_id)}
+                    </div>
+                    <span className="text-sm text-gray-600">
+                      {getUserName(project.owner_id)}
+                    </span>
+                  </div>
+                </div>
+
+                {project.collaborators && project.collaborators.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">
+                      Team
+                    </span>
+                    <div className="flex items-center">
+                      <div className="flex -space-x-2">
+                        {project.collaborators
+                          .slice(0, 4)
+                          .map((userId, index) => (
+                            <div
+                              key={userId}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold border-2 border-white ${getInitialsColor(
+                                userId
+                              )}`}
+                              title={getUserName(userId)}
+                              style={{
+                                zIndex: project.collaborators.length - index,
+                              }}
+                            >
+                              {getUserInitials(userId)}
+                            </div>
+                          ))}
+                        {project.collaborators.length > 4 && (
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-300 text-gray-600 text-xs font-bold border-2 border-white">
+                            +{project.collaborators.length - 4}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Project Footer */}
+            </div>
+          ))}
+        </div>
+
+        {/* Empty State */}
+        {projects.length === 0 && (
+          <div className="text-center py-16">
+            <div className="max-w-md mx-auto">
+              <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Plus size={32} className="text-gray-400" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                No projects yet
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Get started by creating your first project and start
+                collaborating with your team.
+              </p>
+              <button
+                onClick={() => setIsCreating(true)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
+              >
+                Create Your First Project
+              </button>
             </div>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
-} 
+}

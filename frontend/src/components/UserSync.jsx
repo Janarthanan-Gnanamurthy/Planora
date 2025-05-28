@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
+import { createUser } from "../services/api";
 
 export default function UserSync() {
   const { isSignedIn, user } = useUser();
@@ -11,18 +12,9 @@ export default function UserSync() {
       if (!isSignedIn || !user) return;
 
       try {
-        // Directly POST to FastAPI backend
-        await fetch("http://127.0.0.1:8000/users", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username:
-              user.fullName ||
-              user.username ||
-              user.primaryEmailAddress?.emailAddress,
-          }),
+        await createUser({
+          username: user.fullName || user.username || user.primaryEmailAddress?.emailAddress,
+          clerkId: user.id,
         });
       } catch (err) {
         console.error("Failed to sync user with FastAPI:", err);

@@ -1,18 +1,30 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import TaskCard from './TaskCard';
 import CreateTaskModal from './CreateTaskModal';
 import EditTaskModal from './EditTaskModal';
-import useStore from '../store/useStore';
+import { createTask, getTasks, updateTask } from '../services/api';
 
-const TaskBoard = ({ project }) => {
+const TaskBoard = ({ project, users }) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [draggedTask, setDraggedTask] = useState(null);
+  const [tasks, setTasks] = useState([]);
   
-  const { addTask, updateTask } = useStore();
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const tasksList = await getTasks({ project_id: project.id });
+        setTasks(tasksList);
+      } catch (error) {
+        console.error('Failed to fetch tasks:', error);
+      }
+    };
+
+    fetchTasks();
+  }, [project.id]);
 
   const handleDragStart = (e, task) => {
     setDraggedTask(task);
@@ -22,26 +34,37 @@ const TaskBoard = ({ project }) => {
     e.preventDefault();
   };
 
-  const handleDrop = (e, status) => {
+  const handleDrop = async (e, status) => {
     e.preventDefault();
     if (draggedTask) {
       const updatedTask = { ...draggedTask, status };
-      handleTaskUpdate(updatedTask);
+      await handleTaskUpdate(updatedTask);
       setDraggedTask(null);
     }
   };
 
-  const handleTaskUpdate = (updatedTask) => {
-    updateTask(project.id, updatedTask);
+  const handleTaskUpdate = async (updatedTask) => {
+    try {
+      const response = await updateTask(updatedTask.id, updatedTask);
+      setTasks(tasks.map(task => task.id === response.id ? response : task));
+      setIsEditModalOpen(false);
+    } catch (error) {
+      console.error('Failed to update task:', error);
+    }
   };
 
-  const handleCreateTask = (taskData) => {
-    const newTask = {
-      ...taskData,
-      status: 'todo',
-    };
-    addTask(project.id, newTask);
-    setIsCreateModalOpen(false);
+  const handleCreateTask = async (taskData) => {
+    try {
+      const newTask = await createTask({
+        ...taskData,
+        project_id: project.id,
+        status: 'todo',
+      });
+      setTasks([...tasks, newTask]);
+      setIsCreateModalOpen(false);
+    } catch (error) {
+      console.error('Failed to create task:', error);
+    }
   };
 
   const handleTaskClick = (task) => {
@@ -51,26 +74,26 @@ const TaskBoard = ({ project }) => {
 
   const sections = [
     { id: 'todo', title: 'To Do', color: 'bg-gray-100' },
-    { id: 'doing', title: 'In Progress', color: 'bg-blue-50' },
+    { id: 'in_progress', title: 'In Progress', color: 'bg-blue-50' },
     { id: 'done', title: 'Done', color: 'bg-green-50' },
   ];
 
   const getTasksByStatus = (status) => {
-    return project.tasks?.filter((task) => task.status === status) || [];
+    return tasks.filter((task) => task.status === status) || [];
   };
 
   const getAssigneeName = (assigneeId) => {
-    const collaborator = project.collaborators?.find(c => c.id === assigneeId);
-    return collaborator?.name || 'Unassigned';
+    const assignee = users.find(u => u.id === assigneeId);
+    return assignee?.username || 'Unassigned';
   };
 
   return (
     <div className="flex-1 p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">{project.name}</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Tasks</h1>
           <p className="text-gray-600 mt-1">
-            {project.collaborators?.length || 0} team member{project.collaborators?.length !== 1 ? 's' : ''}
+            {tasks.length} task{tasks.length !== 1 ? 's' : ''}
           </p>
         </div>
         <button
@@ -107,7 +130,7 @@ const TaskBoard = ({ project }) => {
                   <TaskCard 
                     task={{
                       ...task,
-                      assigneeName: getAssigneeName(task.assignee)
+                      assigneeName: getAssigneeName(task.assigned_to)
                     }}
                   />
                 </div>
@@ -121,7 +144,7 @@ const TaskBoard = ({ project }) => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleCreateTask}
-        projectUsers={project.collaborators || []}
+        projectUsers={users}
       />
 
       <EditTaskModal
@@ -132,7 +155,7 @@ const TaskBoard = ({ project }) => {
         }}
         onSubmit={handleTaskUpdate}
         task={selectedTask}
-        projectUsers={project.collaborators || []}
+        projectUsers={users}
       />
     </div>
   );

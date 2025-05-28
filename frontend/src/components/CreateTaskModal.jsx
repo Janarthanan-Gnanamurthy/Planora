@@ -4,20 +4,20 @@ import { X } from 'lucide-react';
 
 const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
   const [taskData, setTaskData] = useState({
-    name: '',
-    priority: 'medium',
-    assignee: '',
-    deadline: '',
+    title: '',
+    description: '',
+    assigned_to: '',
+    status: 'todo'
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmit(taskData);
     setTaskData({
-      name: '',
-      priority: 'medium',
-      assignee: '',
-      deadline: '',
+      title: '',
+      description: '',
+      assigned_to: '',
+      status: 'todo'
     });
     onClose();
   };
@@ -49,35 +49,33 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Task Name
+              Task Title
             </label>
             <input
               type="text"
               required
-              value={taskData.name}
+              value={taskData.title}
               onChange={(e) =>
-                setTaskData({ ...taskData, name: e.target.value })
+                setTaskData({ ...taskData, title: e.target.value })
               }
               className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              placeholder="Enter task name"
+              placeholder="Enter task title"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Priority
+              Description
             </label>
-            <select
-              value={taskData.priority}
+            <textarea
+              value={taskData.description}
               onChange={(e) =>
-                setTaskData({ ...taskData, priority: e.target.value })
+                setTaskData({ ...taskData, description: e.target.value })
               }
               className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
+              placeholder="Enter task description"
+              rows={3}
+            />
           </div>
 
           <div>
@@ -85,36 +83,19 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
               Assignee
             </label>
             <select
-              required
-              value={taskData.assignee}
+              value={taskData.assigned_to}
               onChange={(e) =>
-                setTaskData({ ...taskData, assignee: e.target.value })
+                setTaskData({ ...taskData, assigned_to: e.target.value })
               }
               className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="">Select assignee</option>
               {projectUsers?.map((user) => (
-                <option key={`create_task_user_${user.id}`} value={user.id}>
-                  {user.name}
+                <option key={user.id} value={user.id}>
+                  {user.username}
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Deadline
-            </label>
-            <input
-              type="date"
-              required
-              value={taskData.deadline}
-              onChange={(e) =>
-                setTaskData({ ...taskData, deadline: e.target.value })
-              }
-              className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              min={new Date().toISOString().split('T')[0]}
-            />
           </div>
 
           <div className="flex justify-end space-x-2 mt-6">
