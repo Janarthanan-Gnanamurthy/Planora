@@ -14,7 +14,16 @@ export async function POST(request) {
     const { email, projectId, projectName, inviterName } = await request.json();
 
     // Create an invitation token (you might want to use a more secure method)
-    const inviteToken = Buffer.from(`${email}:${projectId}`).toString('base64');
+    console.log("Creating token with - Email:", email, "ProjectId:", projectId);
+    const tokenData = `${email}:${projectId}`;
+    console.log("Token data before encoding:", tokenData);
+    // Use URL-safe base64 encoding
+    const inviteToken = Buffer.from(tokenData)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    console.log("Generated token:", inviteToken);
     
     const acceptUrl = `${process.env.NEXT_PUBLIC_APP_URL}/accept-invite/${inviteToken}`;
 

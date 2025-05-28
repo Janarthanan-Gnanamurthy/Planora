@@ -1,16 +1,15 @@
-'use client';
-import { useEffect, useState } from 'react';
-import { useUser } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
-import useStore from '@/store/useStore';
+"use client";
+import { useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { SignIn } from "@clerk/nextjs";
+import { getUserByClerkId } from "../../../services/api";
 
 export default function AcceptInvite({ params }) {
-  const [status, setStatus] = useState('loading');
+  const [status, setStatus] = useState("loading");
   const [token, setToken] = useState(null);
   const { isLoaded, isSignedIn, user } = useUser();
   const router = useRouter();
-  const { addCollaborator } = useStore();
 
   // Resolve params and extract token
   useEffect(() => {
@@ -18,13 +17,13 @@ export default function AcceptInvite({ params }) {
       const resolvedParams = await params;
       const extractedToken = resolvedParams?.token;
       setToken(extractedToken);
-      
+
       // Store the token in sessionStorage when available
-      if (extractedToken && typeof window !== 'undefined') {
-        sessionStorage.setItem('inviteToken', extractedToken);
+      if (extractedToken && typeof window !== "undefined") {
+        sessionStorage.setItem("inviteToken", extractedToken);
       }
     };
-    
+
     resolveParams();
   }, [params]);
 
@@ -38,50 +37,76 @@ export default function AcceptInvite({ params }) {
       }
 
       // Get the token from sessionStorage (with window check)
-      const storedToken = typeof window !== 'undefined' 
-        ? sessionStorage.getItem('inviteToken') 
-        : token;
-        
+      const storedToken =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("inviteToken")
+          : token;
+
       if (!storedToken) {
-        setStatus('error');
+        setStatus("error");
         return;
       }
 
       try {
         // Decode the invitation token
-        const decodedToken = Buffer.from(storedToken, 'base64').toString();
-        const [email, projectId] = decodedToken.split(':');
+        console.log("Original token:", storedToken);
+        // Clean the token by removing any URL-safe characters that might have been added
+        const cleanToken = storedToken.replace(/-/g, "+").replace(/_/g, "/");
+        console.log("Cleaned token:", cleanToken);
+        const decodedToken = Buffer.from(cleanToken, "base64").toString();
+        console.log("Decoded token:", decodedToken);
+        const [email, projectId] = decodedToken.trim().split(":");
+        console.log("Split values - Email:", email, "ProjectId:", projectId);
 
         // Verify that the signed-in user's email matches the invitation
-        if (user.emailAddresses.some(e => e.emailAddress === email)) {
-          // Add user as collaborator
-          addCollaborator(projectId, {
-            id: user.id,
-            name: user.fullName || 'Unknown User',
-            email: email
-          });
-          setStatus('success');
-          
-          // Clear the stored token
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('inviteToken');
+        if (user.emailAddresses.some((e) => e.emailAddress === email)) {
+          // Get the user's database ID using their Clerk ID
+          const dbUser = await getUserByClerkId(user.id);
+
+          if (!dbUser) {
+            console.error("User not found in database");
+            setStatus("error");
+            return;
           }
-          
+
+          console.log(dbUser, projectId); // Add user as collaborator using the API endpoint
+          const response = await fetch("/api/projects/add-collaborators", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              project_id: projectId,
+              collaborator_ids: [dbUser.id],
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to add collaborator");
+          }
+
+          setStatus("success");
+
+          // Clear the stored token
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem("inviteToken");
+          }
+
           // Redirect to the project after a short delay
           setTimeout(() => {
-            router.push('/project');
+            router.push(`/project/${projectId.replace(/-/g, "_")}`);
           }, 2000);
         } else {
-          setStatus('error');
+          setStatus("error");
         }
       } catch (error) {
-        console.error('Failed to process invitation:', error);
-        setStatus('error');
+        console.error("Failed to process invitation:", error);
+        setStatus("error");
       }
     };
 
     processInvitation();
-  }, [isLoaded, isSignedIn, user, router, addCollaborator, token]);
+  }, [isLoaded, isSignedIn, user, router, token]);
 
   // If not signed in, show the sign-in form
   if (!isSignedIn) {
@@ -89,8 +114,12 @@ export default function AcceptInvite({ params }) {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-800">Accept Invitation</h1>
-            <p className="text-gray-600 mt-2">Please sign in or sign up to accept the invitation</p>
+            <h1 className="text-2xl font-bold text-gray-800">
+              Accept Invitation
+            </h1>
+            <p className="text-gray-600 mt-2">
+              Please sign in or sign up to accept the invitation
+            </p>
           </div>
           <SignIn
             appearance={{
@@ -101,7 +130,9 @@ export default function AcceptInvite({ params }) {
             }}
             routing="path"
             path="/sign-in"
-            redirectUrl={typeof window !== 'undefined' ? window.location.href : undefined}
+            redirectUrl={
+              typeof window !== "undefined" ? window.location.href : undefined
+            }
             signUpUrl="/sign-up"
           />
         </div>
@@ -111,34 +142,36 @@ export default function AcceptInvite({ params }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-lg">
-        {status === 'loading' && (
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Processing invitation...</p>
-          </div>
-        )}
-
-        {status === 'success' && (
-          <div className="text-center">
-            <div className="text-green-500 text-5xl mb-4">✓</div>
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">
-              Invitation Accepted!
+      <div className="max-w-md w-full text-center">
+        {status === "loading" && (
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">
+              Processing Invitation
             </h1>
             <p className="text-gray-600">
-              You have been successfully added to the project. Redirecting to project...
+              Please wait while we process your invitation...
             </p>
           </div>
         )}
-
-        {status === 'error' && (
-          <div className="text-center">
-            <div className="text-red-500 text-5xl mb-4">×</div>
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">
-              Invalid Invitation
+        {status === "success" && (
+          <div>
+            <h1 className="text-2xl font-bold text-green-600 mb-4">
+              Invitation Accepted!
             </h1>
             <p className="text-gray-600">
-              This invitation link is invalid or has expired. Please request a new invitation.
+              You have been successfully added to the project.
+            </p>
+            <p className="text-gray-600 mt-2">
+              Redirecting you to the project page...
+            </p>
+          </div>
+        )}
+        {status === "error" && (
+          <div>
+            <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
+            <p className="text-gray-600">
+              Failed to process the invitation. Please try again or contact
+              support.
             </p>
           </div>
         )}

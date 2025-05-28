@@ -1,9 +1,9 @@
+// layout.jsx
 import { ClerkProvider } from "@clerk/nextjs";
 import { Inter } from "next/font/google";
 import Navbar from "../components/Navbar";
+import ClientUserSync from "../components/Userclientsync";
 import "./globals.css";
-import Sidebar from "../components/Sidebar";
-import UserSync from "../components/UserSync";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,7 +17,7 @@ export default function RootLayout({ children }) {
     <ClerkProvider>
       <html lang="en">
         <body className={inter.className}>
-          {/* <UserSync /> */}
+          <ClientUserSync />
           <Navbar />
           <main>{children}</main>
         </body>

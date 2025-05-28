@@ -32,12 +32,24 @@ const Sidebar = () => {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
+        // First get the database user ID using clerkId
+        const dbUser = await getUserByClerkId(user.id);
+        if (!dbUser) {
+          console.error("User not found in database");
+          return;
+        }
+
         const projectsList = await getProjects();
         const usersList = await getUsers();
 
-        console.log("Fetched projects:", projectsList);
+        // Filter projects where the user is in the collaborators array
+        const userProjects = projectsList.filter(project => 
+          project.collaborators?.includes(dbUser.id)
+        );
+
+        console.log("Fetched projects:", userProjects);
         console.log("fetched users", usersList);
-        setProjects(projectsList);
+        setProjects(userProjects);
         setusers(usersList);
       } catch (error) {
         console.error("Failed to fetch projects:", error);
@@ -85,8 +97,8 @@ const Sidebar = () => {
         const newProject = await createProject({
           name: newProjectName,
           description: "",
-          owner_id: dbUser.id, // Use the database user ID,
-          collaborators: [dbUser.id],
+          owner_id: dbUser.id, // Use the database user ID
+          collaborators: [dbUser.id], // Fixed: wrap the user ID in an array
         });
 
         console.log("Created project:", newProject);
@@ -234,7 +246,7 @@ const Sidebar = () => {
         <div className="mt-auto pt-4 border-t border-gray-800">
           <button
             onClick={() => setShowInviteModal(true)}
-            className="w-full p-2 flex items-center justify-center gap-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors"
+            className="w-full p-2 flex items-center justify-center gap-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors "
           >
             <Users size={20} />
             Invite Collaborators
@@ -250,14 +262,12 @@ const Sidebar = () => {
             </h3>
             <form onSubmit={handleInviteSubmit}>
               <div className="mb-4">
-                <label className="block text-gray-700 mb-2">
-                  Email Address
-                </label>
+                <label className="block text-black mb-2">Email Address</label>
                 <input
                   type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full p-2 border rounded focus:border-blue-500 focus:outline-none"
+                  className="w-full p-2 border rounded focus:border-blue-500 focus:outline-none text-black"
                   placeholder="Enter email address"
                   required
                   disabled={inviteStatus === "sending"}
