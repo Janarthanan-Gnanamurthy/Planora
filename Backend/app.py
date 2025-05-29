@@ -197,6 +197,7 @@ def create_task(task: schemas.TaskCreate, db: Session = Depends(database.get_db)
         assigned_to_id=task.assigned_to, # Maps Pydantic's 'assigned_to' to SQLAlchemy's 'assigned_to_id'
         status=task.status,
         created_at=created_at,
+        deadline=task.deadline,
         priority=task.priority
     )
     try:

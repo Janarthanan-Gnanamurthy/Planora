@@ -40,6 +40,7 @@ class Task(Base):
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, nullable=False)
+    deadline = Column(TIMESTAMP, nullable=False)
     priority = Column(Text, nullable=True)
     assigned_to_id = Column(String, ForeignKey("users.id"), nullable=True) # Foreign key to User table
     status = Column(String, default="todo", nullable=False)  # todo, in_progress, done

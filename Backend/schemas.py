@@ -55,6 +55,7 @@ class TaskCreate(TaskBase):
     project_id: str
     assigned_to: Optional[str] = None # This will be the user_id
     created_at: Optional[datetime] = None  # Use datetime type
+    deadline: Optional[datetime] = None
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
