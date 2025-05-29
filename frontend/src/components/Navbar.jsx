@@ -331,14 +331,6 @@ const AIAssistant = ({ isOpen, onClose }) => {
               </h2>
             </div>
             <div className="flex items-center space-x-2">
-              <button className="p-1 hover:bg-gray-700 rounded transition-colors">
-                <Clock className="w-4 h-4 text-gray-400" />
-              </button>
-              <button className="p-1 hover:bg-gray-700 rounded transition-colors">
-                <div className="w-4 h-4 border border-gray-400 flex items-center justify-center">
-                  <div className="w-2 h-2 border-t border-r border-gray-400 transform rotate-45"></div>
-                </div>
-              </button>
               <button
                 onClick={onClose}
                 className="p-1 hover:bg-gray-700 rounded transition-colors"
@@ -376,9 +368,6 @@ const AIAssistant = ({ isOpen, onClose }) => {
                     );
                   })}
                 </div>
-                <button className="text-gray-400 text-sm mt-4 hover:text-gray-300">
-                  Show more
-                </button>
               </div>
             ) : (
               /* Chat Interface */
@@ -460,7 +449,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
           {/* General Input Area - Always visible at bottom */}
           {!selectedAction && (
             <div className="p-4 border-t border-gray-700">
-              <div className="flex items-end space-x-2">
+              <div className="flex items-center space-x-2">
                 <div className="flex-1">
                   <textarea
                     value={input}
@@ -473,7 +462,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
                         }
                       }
                     }}
-                    placeholder="Ask me anything or choose an action above..."
+                    placeholder="Ask me anything"
                     className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                     rows="1"
                     style={{
@@ -490,7 +479,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
                 <button
                   onClick={handleGeneralSubmit}
                   disabled={!input.trim()}
-                  className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
+                  className="mb-[0.38rem] px-3 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
                 >
                   <Send className="w-4 h-4 text-white" />
                 </button>
