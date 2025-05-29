@@ -138,5 +138,61 @@ export const deleteTask = async (taskId) => {
   const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
     method: "DELETE",
   });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete task: ${response.status}`);
+  }
+
+  // DELETE operations often return empty responses (204 No Content)
+  // Don't try to parse JSON if response is empty
+  if (response.status === 204 || !response.headers.get("content-length")) {
+    return { success: true };
+  }
+
+  return handleResponse(response);
+};
+
+// AI API calls
+export const summarizeTask = async (description) => {
+  const response = await fetch(`${API_BASE_URL}/ai/summarize_task`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ description }),
+  });
+  return handleResponse(response);
+};
+
+export const suggestTasks = async (projectDescription) => {
+  const response = await fetch(`${API_BASE_URL}/ai/suggest_tasks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ project_description: projectDescription }),
+  });
+  return handleResponse(response);
+};
+
+export const analyzeComment = async (commentContent) => {
+  const response = await fetch(`${API_BASE_URL}/ai/analyze_comment`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ comment_content: commentContent }),
+  });
+  return handleResponse(response);
+};
+
+export const complexTaskAssistant = async (query) => {
+  const response = await fetch(`${API_BASE_URL}/ai/complex_task_assistant`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
   return handleResponse(response);
 };

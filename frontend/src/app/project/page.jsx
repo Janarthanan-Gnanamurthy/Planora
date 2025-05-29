@@ -23,11 +23,24 @@ export default function ProjectPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // First get the database user ID using clerkId
+        const dbUser = await getUserByClerkId(user.id);
+        if (!dbUser) {
+          console.error("User not found in database");
+          return;
+        }
+
         const [projectsList, usersList] = await Promise.all([
           getProjects(),
           getUsers(),
         ]);
-        setProjects(projectsList);
+
+        // Filter projects where the user is in the collaborators array
+        const userProjects = projectsList.filter(project => 
+          project.collaborators?.includes(dbUser.id)
+        );
+
+        setProjects(userProjects);
         setUsers(usersList);
       } catch (error) {
         console.error("Failed to fetch data:", error);
@@ -37,7 +50,7 @@ export default function ProjectPage() {
     };
 
     fetchData();
-  }, []);
+  }, [user]); // Add user as dependency since we need it for getUserByClerkId
 
   const handleAddProject = async (e) => {
     e.preventDefault();

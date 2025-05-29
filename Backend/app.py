@@ -107,7 +107,8 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(databas
         id=project_id,
         name=project.name,
         description=project.description,
-        owner_id=project.owner_id
+        owner_id=project.owner_id,
+        collaborators=project.collaborators
     )
     try:
         db.add(db_project)
