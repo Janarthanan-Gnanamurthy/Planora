@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uuid
 import os
+from datetime import datetime
 
 # --- User Schemas ---
 class UserBase(BaseModel):
@@ -48,22 +49,27 @@ class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     status: str = Field("todo", pattern="^(todo|in_progress|done)$")
+    priority: Optional[str] = None
 
 class TaskCreate(TaskBase):
     project_id: str
     assigned_to: Optional[str] = None # This will be the user_id
+    created_at: Optional[datetime] = None  # Use datetime type
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     assigned_to: Optional[str] = None # Use Optional[str] for nullable FK
     status: Optional[str] = None
-
+    priority: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 class Task(TaskBase): # Response model
     id: str
     project_id: str
     assigned_to: Optional[str] = None # Corresponds to assigned_to_id in the DB model via @property
+    created_at: datetime
+    priority: Optional[str] = None
     # To include assignee or project objects, you could add:
     # assignee: Optional[User] = None
     # project: Project

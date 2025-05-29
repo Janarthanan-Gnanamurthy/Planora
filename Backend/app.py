@@ -6,6 +6,7 @@ from typing import List, Optional, Dict
 import uuid
 import os
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
 
 import google.generativeai as genai
 
@@ -187,13 +188,16 @@ def create_task(task: schemas.TaskCreate, db: Session = Depends(database.get_db)
             raise HTTPException(status_code=404, detail=f"Assignee user with id {task.assigned_to} not found")
     
     task_id = str(uuid.uuid4())
+    created_at = task.created_at if task.created_at else datetime.utcnow().isoformat()
     db_task = models.Task(
         id=task_id,
         project_id=task.project_id,
         title=task.title,
         description=task.description,
         assigned_to_id=task.assigned_to, # Maps Pydantic's 'assigned_to' to SQLAlchemy's 'assigned_to_id'
-        status=task.status
+        status=task.status,
+        created_at=created_at,
+        priority=task.priority
     )
     try:
         db.add(db_task)
@@ -255,6 +259,14 @@ def update_task(task_id: str, task_update: schemas.TaskUpdate, db: Session = Dep
             raise HTTPException(status_code=404, detail=f"Assignee user with id {update_data['assigned_to']} not found")
         db_task.assigned_to_id = update_data["assigned_to"] # Map to DB model field
         del update_data["assigned_to"] # Remove from dict to avoid direct assignment
+
+    # Handle created_at and priority
+    if "created_at" in update_data and update_data["created_at"] is not None:
+        db_task.created_at = update_data["created_at"]
+        del update_data["created_at"]
+    if "priority" in update_data:
+        db_task.priority = update_data["priority"]
+        del update_data["priority"]
 
     for key, value in update_data.items():
         setattr(db_task, key, value)
