@@ -14,6 +14,7 @@ import {
   Send,
   Loader2,
 } from "lucide-react";
+import { getUserByClerkId, getProjects, getTasks } from "../services/api";
 
 // AI Assistant Component
 const AIAssistant = ({ isOpen, onClose }) => {
@@ -22,6 +23,12 @@ const AIAssistant = ({ isOpen, onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedAction, setSelectedAction] = useState(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  const { user } = useUser();
+  const [backendUserId, setBackendUserId] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedTaskId, setSelectedTaskId] = useState("");
 
   // Replace this with your actual FastAPI backend URL
   const API_BASE_URL =
@@ -67,6 +74,56 @@ const AIAssistant = ({ isOpen, onClose }) => {
   ];
 
   useEffect(() => {
+    const fetchBackendUserId = async () => {
+      if (user && user.id) {
+        try {
+          const dbUser = await getUserByClerkId(user.id);
+          setBackendUserId(dbUser?.id || null);
+        } catch (err) {
+          setBackendUserId(null);
+        }
+      }
+    };
+    fetchBackendUserId();
+  }, [user]);
+
+  useEffect(() => {
+    const fetchUserProjects = async () => {
+      if (isOpen && backendUserId) {
+        try {
+          const allProjects = await getProjects();
+          // Filter projects where user is a collaborator
+          const userProjects = allProjects.filter(p => p.collaborators?.includes(backendUserId));
+          setProjects(userProjects);
+        } catch (err) {
+          setProjects([]);
+        }
+      }
+    };
+    fetchUserProjects();
+  }, [isOpen, backendUserId]);
+
+  useEffect(() => {
+    const fetchProjectTasks = async () => {
+      if (selectedProjectId) {
+        try {
+          const projectTasks = await getTasks({ project_id: selectedProjectId });
+          setTasks(projectTasks);
+        } catch (err) {
+          setTasks([]);
+        }
+      } else {
+        setTasks([]);
+      }
+    };
+    fetchProjectTasks();
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    setSelectedTaskId("");
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     if (isOpen) {
       setIsAnimating(true);
     } else {
@@ -88,23 +145,26 @@ const AIAssistant = ({ isOpen, onClose }) => {
 
   const handleSubmit = async () => {
     if (!input.trim() || !selectedAction || isLoading) return;
-
+    if (!backendUserId) {
+      setMessages((prev) => [...prev, { type: "error", content: "User not found in backend. Please refresh or try again later." }]);
+      return;
+    }
     const userMessage = { type: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
-
     try {
-      console.log("Making API call to:", selectedAction.endpoint);
-      console.log("Request payload:", { [selectedAction.requestKey]: input });
-
+      const payload = {
+        user_id: backendUserId,
+        project_id: selectedProjectId || null,
+        task_id: selectedTaskId || null,
+        [selectedAction.requestKey]: input,
+      };
       const response = await fetch(selectedAction.endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          [selectedAction.requestKey]: input,
-        }),
+        body: JSON.stringify(payload),
       });
 
       console.log("Response status:", response.status);
@@ -196,28 +256,28 @@ const AIAssistant = ({ isOpen, onClose }) => {
 
   const handleGeneralSubmit = async () => {
     if (!input.trim()) return;
-
-    // Auto-select the complex assistant action and submit
+    if (!backendUserId) {
+      setMessages([{ type: "error", content: "User not found in backend. Please refresh or try again later." }]);
+      return;
+    }
     const complexAction = quickActions[3];
     setSelectedAction(complexAction);
-
-    // Add user message
     const userMessage = { type: "user", content: input };
     setMessages([userMessage]);
     setIsLoading(true);
-
     try {
-      console.log("Making API call to:", complexAction.endpoint);
-      console.log("Request payload:", { [complexAction.requestKey]: input });
-
+      const payload = {
+        user_id: backendUserId,
+        project_id: selectedProjectId || null,
+        task_id: selectedTaskId || null,
+        [complexAction.requestKey]: input,
+      };
       const response = await fetch(complexAction.endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          [complexAction.requestKey]: input,
-        }),
+        body: JSON.stringify(payload),
       });
 
       console.log("Response status:", response.status);
@@ -246,11 +306,11 @@ const AIAssistant = ({ isOpen, onClose }) => {
         } else if (jsonResult.summary) {
           // For summarize task endpoint
           result = jsonResult.summary;
-        } else if (jsonResult.suggestions) {
+        } else if (jsonResult.suggested_tasks) {
           // For suggest tasks endpoint
-          result = Array.isArray(jsonResult.suggestions)
-            ? jsonResult.suggestions.join("\n• ")
-            : jsonResult.suggestions;
+          result = Array.isArray(jsonResult.suggested_tasks)
+            ? jsonResult.suggested_tasks.join("\n• ")
+            : jsonResult.suggested_tasks;
         } else if (jsonResult.analysis) {
           // For analyze comment endpoint
           result = jsonResult.analysis;
@@ -372,6 +432,39 @@ const AIAssistant = ({ isOpen, onClose }) => {
             ) : (
               /* Chat Interface */
               <div className="flex flex-col h-full">
+                {/* Project/Task Dropdowns */}
+                <div className="p-4 pb-0 flex flex-col gap-2">
+                  <label className="text-xs text-gray-400 mb-1">Project</label>
+                  <select
+                    className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedProjectId}
+                    onChange={e => setSelectedProjectId(e.target.value)}
+                  >
+                    <option value="">Select a project (optional)</option>
+                    {projects.map(project => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedProjectId && (
+                    <>
+                      <label className="text-xs text-gray-400 mb-1 mt-2">Task</label>
+                      <select
+                        className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={selectedTaskId}
+                        onChange={e => setSelectedTaskId(e.target.value)}
+                      >
+                        <option value="">Select a task (optional)</option>
+                        {tasks.map(task => (
+                          <option key={task.id} value={task.id}>
+                            {task.title}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                </div>
                 <div className="flex-1 p-4 overflow-y-auto space-y-4 min-h-[200px]">
                   {messages.length === 0 && (
                     <div className="text-gray-400 text-center py-8">

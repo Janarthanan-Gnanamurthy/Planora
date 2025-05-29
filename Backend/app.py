@@ -371,33 +371,73 @@ def call_gemini(prompt: str) -> str:
         return f"Gemini SDK error: {str(e)}"
 
 @app.post("/ai/summarize_task", tags=["AI"])
-def ai_summarize_task(description: str = Body(..., embed=True)):
-    prompt = f"Summarize this task description concisely: {description}"
+def ai_summarize_task(
+    user_id: str = Body(...),
+    project_id: str = Body(None),
+    description: str = Body(...),
+    db: Session = Depends(database.get_db)
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    project = db.query(models.Project).filter(models.Project.id == project_id).first() if project_id else None
+    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
+    project_info = f"Project: {project.name if project else 'N/A'} (ID: {project_id})" if project else ""
+    prompt = f"{user_info}\n{project_info}\nSummarize this task description concisely: {description}"
     summary = call_gemini(prompt)
     return {"summary": summary}
 
 @app.post("/ai/suggest_tasks", tags=["AI"])
-def ai_suggest_tasks(project_description: str = Body(..., embed=True)):
-    prompt = f"Based on this project description, suggest exactly 3 actionable tasks with clear titles. Format as a numbered list:\n\nProject: {project_description}"
+def ai_suggest_tasks(
+    user_id: str = Body(...),
+    project_id: str = Body(None),
+    project_description: str = Body(...),
+    db: Session = Depends(database.get_db)
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    project = db.query(models.Project).filter(models.Project.id == project_id).first() if project_id else None
+    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
+    project_info = f"Project: {project.name if project else 'N/A'} Description:{project.description} (ID: {project_id})" if project else ""
+    prompt = f"{user_info}\n{project_info}\nBased on this project description, suggest exactly 3 actionable tasks with clear titles. Format as a numbered list:\n\nProject: {project_description}"
     suggestions = call_gemini(prompt)
     return {"suggested_tasks": suggestions}
 
 @app.post("/ai/analyze_comment", tags=["AI"])
-def ai_analyze_comment(comment_content: str = Body(..., alias="comment", embed=True)): # Changed alias for clarity
-    prompt = f"Analyze the sentiment (Positive, Negative, Neutral) and identify any action items in this comment. Provide a brief analysis.\n\nComment: {comment_content}"
+def ai_analyze_comment(
+    user_id: str = Body(...),
+    task_id: str = Body(None),
+    comment_content: str = Body(...),
+    db: Session = Depends(database.get_db)
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    task = db.query(models.Task).filter(models.Task.id == task_id).first() if task_id else None
+    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
+    task_info = f"Task: {task.title if task else 'N/A'} (ID: {task_id})" if task else ""
+    prompt = f"{user_info}\n{task_info}\nAnalyze the sentiment (Positive, Negative, Neutral) and identify any action items in this comment. Provide a brief analysis.\n\nComment: {comment_content}"
     analysis = call_gemini(prompt)
     return {"analysis": analysis}
 
 @app.post("/ai/complex_task_assistant", tags=["AI"])
-def ai_complex_task_assistant(query: str = Body(..., embed=True)):
+def ai_complex_task_assistant(
+    user_id: str = Body(...),
+    project_id: str = Body(None),
+    task_id: str = Body(None),
+    query: str = Body(...),
+    db: Session = Depends(database.get_db)
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    project = db.query(models.Project).filter(models.Project.id == project_id).first() if project_id else None
+    task = db.query(models.Task).filter(models.Task.id == task_id).first() if task_id else None
+    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
+    project_info = f"Project: {project.name if project else 'N/A'} (ID: {project_id})" if project else ""
+    task_info = f"Task: {task.title if task else 'N/A'} (ID: {task_id})" if task else ""
     prompt = (
+        f"{user_info}\n{project_info}\n{task_info}\n"
         "You are an expert project management assistant. "
         "Answer the following user question with actionable, clear advice. "
         "If relevant, include best practices, permissions, time tracking, and automation tips. "
         f"User question: {query}"
     )
     answer = call_gemini(prompt)
-    return {"answer": answer}
+    return {"response": answer}
 
 # --- ROOT ENDPOINT ---
 @app.get("/", tags=["Root"])
