@@ -32,27 +32,43 @@ const Sidebar = () => {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        // First get the database user ID using clerkId
-        const dbUser = await getUserByClerkId(user.id);
-        if (!dbUser) {
-          console.error("User not found in database");
-          return;
-        }
+        // Get the clerk user ID from useUser hook
+        const clerkUserId = user.id;
 
+        // Fetch all projects and users
         const projectsList = await getProjects();
         const usersList = await getUsers();
 
-        // Filter projects where the user is in the collaborators array
-        const userProjects = projectsList.filter(project => 
-          project.collaborators?.includes(dbUser.id)
-        );
+        // Find the database user by matching clerkId
+        const dbUser = usersList.find((u) => u.clerkId === clerkUserId);
 
-        console.log("Fetched projects:", userProjects);
-        console.log("fetched users", usersList);
+        if (!dbUser) {
+          console.error("User not found in database");
+          setProjects([]); // Show no projects if user not found
+          return;
+        }
+
+        console.log("Found database user:", dbUser);
+        console.log("Database user ID:", dbUser.id);
+
+        // Filter projects where the user's database ID is in the collaborators array
+        const userProjects = projectsList.filter((project) => {
+          // Ensure collaborators exists and is an array
+          if (!project.collaborators || !Array.isArray(project.collaborators)) {
+            return false;
+          }
+          // Check if user's database ID is in the collaborators array
+          return project.collaborators.includes(dbUser.id);
+        });
+
+        console.log("Filtered user projects:", userProjects);
+        console.log("All users:", usersList);
+
         setProjects(userProjects);
         setusers(usersList);
       } catch (error) {
         console.error("Failed to fetch projects:", error);
+        setProjects([]); // Show no projects on error
       }
     };
 
@@ -82,30 +98,36 @@ const Sidebar = () => {
     e.preventDefault();
     if (newProjectName.trim()) {
       try {
-        // First get the database user ID using clerkId
-        console.log("Getting user by clerkId:", user.id);
-        const dbUser = await getUserByClerkId(user.id);
+        // Get the clerk user ID from useUser hook
+        const clerkUserId = user.id;
 
-        console.log("Database user:", dbUser);
+        // Find the database user by matching clerkId from the users array we already have
+        const dbUser = users.find((u) => u.clerkId === clerkUserId);
 
         if (!dbUser) {
           console.error("User not found in database");
           return;
         }
 
-        console.log("Creating project with owner_id:", dbUser.id);
+        console.log("Creating project with user:", dbUser);
+        console.log("Owner ID:", dbUser.id);
+
+        // Create new project with owner_id and add owner as collaborator
         const newProject = await createProject({
           name: newProjectName,
           description: "",
-          owner_id: dbUser.id, // Use the database user ID
-          collaborators: [dbUser.id], // Fixed: wrap the user ID in an array
+          owner_id: dbUser.id, // Set the owner as the current user's database ID
+          collaborators: [dbUser.id], // Add the owner as the first collaborator
         });
 
         console.log("Created project:", newProject);
+
+        // Add the new project to the projects list
         setProjects([...projects, newProject]);
         setNewProjectName("");
         setIsAddingProject(false);
 
+        // Navigate to the new project
         router.push(`/project/${newProject.id.replace(/-/g, "_")}`);
       } catch (error) {
         console.error("Failed to create project:", error);

@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import Navbar from "../components/Navbar";
 import ClientUserSync from "../components/Userclientsync";
 import "./globals.css";
+import UserSync from "../components/UserSync";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,7 +18,10 @@ export default function RootLayout({ children }) {
     <ClerkProvider>
       <html lang="en">
         <body className={inter.className}>
-          <ClientUserSync />
+          {/* <ClientUserSync />
+           */}
+          <UserSync />
+
           <Navbar />
           <main>{children}</main>
         </body>
