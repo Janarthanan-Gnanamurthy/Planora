@@ -1,5 +1,5 @@
 # models.py
-from sqlalchemy import Column, String, ForeignKey, Text, ARRAY
+from sqlalchemy import Column, String, ForeignKey, Text, ARRAY, TIMESTAMP
 from sqlalchemy.orm import relationship
 from database import Base # Assuming database.py is in the same directory (e.g., app/database.py)
 from typing import Optional
@@ -39,6 +39,9 @@ class Task(Base):
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False)
+    deadline = Column(TIMESTAMP, nullable=False)
+    priority = Column(Text, nullable=True)
     assigned_to_id = Column(String, ForeignKey("users.id"), nullable=True) # Foreign key to User table
     status = Column(String, default="todo", nullable=False)  # todo, in_progress, done
 
