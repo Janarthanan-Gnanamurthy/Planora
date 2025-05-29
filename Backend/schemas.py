@@ -71,6 +71,7 @@ class Task(TaskBase): # Response model
     assigned_to: Optional[str] = None # Corresponds to assigned_to_id in the DB model via @property
     created_at: datetime
     priority: Optional[str] = None
+    deadline: Optional[datetime] = None  # Changed this line
     # To include assignee or project objects, you could add:
     # assignee: Optional[User] = None
     # project: Project
