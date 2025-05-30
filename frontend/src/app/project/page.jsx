@@ -3,12 +3,7 @@ import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Plus, Users, Calendar, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  createProject,
-  getProjects,
-  getUserByClerkId,
-  getUsers,
-} from "../../services/api";
+import { createProject, getProjects, getUsers } from "../../services/api";
 
 export default function ProjectPage() {
   const { user } = useUser();
@@ -23,64 +18,92 @@ export default function ProjectPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // First get the database user ID using clerkId
-        const dbUser = await getUserByClerkId(user.id);
-        if (!dbUser) {
-          console.error("User not found in database");
-          return;
-        }
+        console.log(user);
 
+        // Get the clerk user ID from useUser hook
+        const clerkUserId = user.id;
+
+        // Fetch all projects and users
         const [projectsList, usersList] = await Promise.all([
           getProjects(),
           getUsers(),
         ]);
 
-        // Filter projects where the user is in the collaborators array
-        const userProjects = projectsList.filter(project => 
-          project.collaborators?.includes(dbUser.id)
-        );
+        // Find the database user by matching clerkId
+        const dbUser = usersList.find((u) => u.clerkId === clerkUserId);
+
+        if (!dbUser) {
+          console.error("User not found in database");
+          setProjects([]); // Show no projects if user not found
+          setUsers(usersList);
+          return;
+        }
+
+        console.log("Found database user:", dbUser);
+        console.log("Database user ID:", dbUser.id);
+
+        // Filter projects where the user's database ID is in the collaborators array
+        const userProjects = projectsList.filter((project) => {
+          // Ensure collaborators exists and is an array
+          if (!project.collaborators || !Array.isArray(project.collaborators)) {
+            return false;
+          }
+          // Check if user's database ID is in the collaborators array
+          return project.collaborators.includes(dbUser.id);
+        });
+
+        console.log("Filtered user projects:", userProjects);
 
         setProjects(userProjects);
         setUsers(usersList);
       } catch (error) {
         console.error("Failed to fetch data:", error);
+        setProjects([]); // Show no projects on error
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
-  }, [user]); // Add user as dependency since we need it for getUserByClerkId
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
 
   const handleAddProject = async (e) => {
     e.preventDefault();
     if (newProjectName.trim()) {
       try {
-        // First get the database user ID using clerkId
-        console.log("Getting user by clerkId:", user.id);
-        const dbUser = await getUserByClerkId(user.id);
+        // Get the clerk user ID from useUser hook
+        const clerkUserId = user.id;
 
-        console.log("Database user:", dbUser);
+        // Find the database user by matching clerkId from the users array we already have
+        const dbUser = users.find((u) => u.clerkId === clerkUserId);
 
         if (!dbUser) {
           console.error("User not found in database");
           return;
         }
 
-        console.log("Creating project with owner_id:", dbUser.id);
+        console.log("Creating project with user:", dbUser);
+        console.log("Owner ID:", dbUser.id);
+
+        // Create new project with owner_id and add owner as collaborator
         const newProject = await createProject({
           name: newProjectName,
           description: newProjectDesc,
-          owner_id: dbUser.id, // Use the database user ID,
-          collaborators: [dbUser.id],
+          owner_id: dbUser.id, // Set the owner as the current user's database ID
+          collaborators: [dbUser.id], // Add the owner as the first collaborator
         });
 
         console.log("Created project:", newProject);
+
+        // Add the new project to the projects list
         setProjects([...projects, newProject]);
         setNewProjectName("");
         setNewProjectDesc("");
         setIsCreating(false);
 
+        // Navigate to the new project
         router.push(`/project/${newProject.id.replace(/-/g, "_")}`);
       } catch (error) {
         console.error("Failed to create project:", error);

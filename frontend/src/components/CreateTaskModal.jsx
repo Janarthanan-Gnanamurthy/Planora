@@ -1,23 +1,27 @@
-'use client';
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+"use client";
+import React, { useState } from "react";
+import { X } from "lucide-react";
 
 const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
   const [taskData, setTaskData] = useState({
-    title: '',
-    description: '',
-    assigned_to: '',
-    status: 'todo'
+    title: "",
+    description: "",
+    assigned_to: "",
+    status: "todo",
+    priority: "medium",
+    deadline: "",
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmit(taskData);
     setTaskData({
-      title: '',
-      description: '',
-      assigned_to: '',
-      status: 'todo'
+      title: "",
+      description: "",
+      assigned_to: "",
+      status: "todo",
+      priority: "medium",
+      deadline: "",
     });
     onClose();
   };
@@ -28,14 +32,27 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
     }
   };
 
+  // Get today's date in YYYY-MM-DD format for min date
+  const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  };
+
+  // Format date for datetime-local input
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toISOString().slice(0, 16);
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       onClick={handleOverlayClick}
     >
-      <div className="bg-white rounded-lg p-6 w-full max-w-md relative transform transition-all duration-300 ease-in-out">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md relative transform transition-all duration-300 ease-in-out max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-800">Create New Task</h2>
           <button
@@ -58,13 +75,13 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
               onChange={(e) =>
                 setTaskData({ ...taskData, title: e.target.value })
               }
-              className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="w-full text-black p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               placeholder="Enter task title"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block  text-sm font-medium text-gray-700 mb-1">
               Description
             </label>
             <textarea
@@ -72,30 +89,72 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
               onChange={(e) =>
                 setTaskData({ ...taskData, description: e.target.value })
               }
-              className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="w-full text-black  p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               placeholder="Enter task description"
               rows={3}
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-black text-sm font-medium text-gray-700 mb-1">
+                Priority
+              </label>
+              <select
+                value={taskData.priority}
+                onChange={(e) =>
+                  setTaskData({ ...taskData, priority: e.target.value })
+                }
+                className="w-full text-black p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Assignee
+              </label>
+              <select
+                value={taskData.assigned_to}
+                onChange={(e) =>
+                  setTaskData({ ...taskData, assigned_to: e.target.value })
+                }
+                className="w-full text-black p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="">Select assignee</option>
+                {projectUsers?.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Assignee
+              Deadline
             </label>
-            <select
-              value={taskData.assigned_to}
+            <input
+              type="datetime-local"
+              value={formatDateForInput(taskData.deadline)}
               onChange={(e) =>
-                setTaskData({ ...taskData, assigned_to: e.target.value })
+                setTaskData({
+                  ...taskData,
+                  deadline: e.target.value
+                    ? new Date(e.target.value).toISOString()
+                    : "",
+                })
               }
-              className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="">Select assignee</option>
-              {projectUsers?.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.username}
-                </option>
-              ))}
-            </select>
+              min={getTodayDate() + "T00:00"}
+              className="w-full text-black p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Optional: Set a deadline for this task
+            </p>
           </div>
 
           <div className="flex justify-end space-x-2 mt-6">
@@ -119,4 +178,4 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
   );
 };
 
-export default CreateTaskModal; 
+export default CreateTaskModal;

@@ -3,7 +3,16 @@ import React, { useEffect, useState, use } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import TaskBoard from "../../../components/TaskBoard";
-import { getProject, getUserByClerkId, getUsers } from "../../../services/api";
+import TaskTimeline from "../../../components/TaskTimeline";
+import EditTaskModal from "../../../components/EditTaskModal";
+import {
+  getProject,
+  getUserByClerkId,
+  getUsers,
+  updateTask,
+  getTasks,
+} from "../../../services/api";
+import { LayoutGrid } from "lucide-react";
 
 export default function ProjectPage({ params }) {
   // Convert underscores back to hyphens for API calls
@@ -17,6 +26,10 @@ export default function ProjectPage({ params }) {
   const [collaborators, setCollaborators] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [viewMode, setViewMode] = useState("board");
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -33,6 +46,8 @@ export default function ProjectPage({ params }) {
         console.log("Project data received:", projectData);
         const usersData = await getUsers();
         console.log("users data received:", usersData);
+        const tasksList = await getTasks({ project_id: projectId });
+        console.log("tasks data received:", tasksList);
 
         if (!projectData) {
           console.error("Project not found");
@@ -71,6 +86,14 @@ export default function ProjectPage({ params }) {
         setProject(projectData);
         setUsers(usersData);
         setCollaborators(projectCollaborators);
+        setTasks(
+          tasksList.map((task) => ({
+            ...task,
+            assigneeName:
+              projectCollaborators.find((u) => u.id === task.assigned_to)
+                ?.username || "Unassigned",
+          }))
+        );
         setError(null);
       } catch (error) {
         console.error("Failed to fetch project data:", error);
@@ -82,6 +105,34 @@ export default function ProjectPage({ params }) {
 
     fetchProjectData();
   }, [isLoaded, isSignedIn, projectId, user]);
+
+  // Add this function to handle task clicks in timeline view
+  const handleTaskClick = (task) => {
+    setSelectedTask(task);
+    setIsEditModalOpen(true);
+  };
+
+  // Add this function to handle task updates
+  const handleTaskUpdate = async (updatedTask) => {
+    try {
+      const response = await updateTask(updatedTask.id, updatedTask);
+      const updatedTaskWithName = {
+        ...response,
+        assigneeName:
+          collaborators.find((u) => u.id === response.assigned_to)?.username ||
+          "Unassigned",
+      };
+      setTasks((prevTasks) =>
+        prevTasks.map((task) =>
+          task.id === response.id ? updatedTaskWithName : task
+        )
+      );
+      setIsEditModalOpen(false);
+      setSelectedTask(null);
+    } catch (error) {
+      console.error("Failed to update task:", error);
+    }
+  };
 
   if (!isLoaded || isLoading) {
     return (
@@ -115,7 +166,32 @@ export default function ProjectPage({ params }) {
     <div className="min-h-screen bg-gray-50">
       <div className="p-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">{project.name}</h1>
+          <div className="flex justify-between items-start">
+            <h1 className="text-3xl font-bold text-gray-800">{project.name}</h1>
+            <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm p-1">
+              <button
+                onClick={() => setViewMode("board")}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                  viewMode === "board"
+                    ? "bg-blue-100 text-blue-600"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                <LayoutGrid size={18} />
+                <span className="text-sm font-medium">Board</span>
+              </button>
+              <button
+                onClick={() => setViewMode("timeline")}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                  viewMode === "timeline"
+                    ? "bg-blue-100 text-blue-600"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                <span className="text-sm font-medium">Timeline</span>
+              </button>
+            </div>
+          </div>
           <div className="mt-4">
             <h2 className="text-lg font-semibold text-gray-700 mb-2">
               Team Members
@@ -140,7 +216,33 @@ export default function ProjectPage({ params }) {
             </div>
           </div>
         </div>
-        <TaskBoard project={project} users={collaborators} />
+
+        {viewMode === "board" ? (
+          <TaskBoard
+            project={project}
+            users={collaborators}
+            tasks={tasks}
+            onTasksChange={setTasks}
+          />
+        ) : (
+          <TaskTimeline
+            project={project}
+            users={collaborators}
+            tasks={tasks}
+            onTasksChange={setTasks}
+          />
+        )}
+
+        <EditTaskModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedTask(null);
+          }}
+          onSubmit={handleTaskUpdate}
+          task={selectedTask}
+          projectUsers={collaborators}
+        />
       </div>
     </div>
   );

@@ -1,10 +1,10 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import TaskCard from "./TaskCard";
 import CreateTaskModal from "./CreateTaskModal";
 import EditTaskModal from "./EditTaskModal";
-import { createTask, getTasks, updateTask, deleteTask } from "../services/api";
+import { createTask, updateTask, deleteTask } from "../services/api";
 
 // Debounce utility function
 const debounce = (func, wait) => {
@@ -19,30 +19,16 @@ const debounce = (func, wait) => {
   };
 };
 
-const TaskBoard = ({ project, users }) => {
+const TaskBoard = ({ project, users, tasks, onTasksChange }) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [draggedTask, setDraggedTask] = useState(null);
-  const [tasks, setTasks] = useState([]);
   const [isOverDeleteZone, setIsOverDeleteZone] = useState(false);
 
   // Keep track of pending updates to send to server
   const pendingUpdatesRef = useRef(new Map());
   const pendingDeletesRef = useRef(new Set());
-
-  useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        const tasksList = await getTasks({ project_id: project.id });
-        setTasks(tasksList);
-      } catch (error) {
-        console.error("Failed to fetch tasks:", error);
-      }
-    };
-
-    fetchTasks();
-  }, [project.id]);
 
   // Debounced function to sync pending changes with server
   const debouncedSync = useCallback(
@@ -79,7 +65,7 @@ const TaskBoard = ({ project, users }) => {
   // Optimistic update function for status changes
   const optimisticStatusUpdate = useCallback(
     (taskId, newStatus) => {
-      setTasks((prevTasks) => {
+      onTasksChange((prevTasks) => {
         const updatedTasks = prevTasks.map((task) =>
           task.id === taskId ? { ...task, status: newStatus } : task
         );
@@ -94,13 +80,13 @@ const TaskBoard = ({ project, users }) => {
         return updatedTasks;
       });
     },
-    [debouncedSync]
+    [debouncedSync, onTasksChange]
   );
 
   // Optimistic delete function
   const optimisticTaskDelete = useCallback(
     (taskId) => {
-      setTasks((prevTasks) => {
+      onTasksChange((prevTasks) => {
         const filteredTasks = prevTasks.filter((t) => t.id !== taskId);
 
         // Queue for server delete
@@ -110,7 +96,7 @@ const TaskBoard = ({ project, users }) => {
         return filteredTasks;
       });
     },
-    [debouncedSync]
+    [debouncedSync, onTasksChange]
   );
 
   const handleDragStart = (e, task) => {
@@ -158,14 +144,18 @@ const TaskBoard = ({ project, users }) => {
     [draggedTask, optimisticTaskDelete]
   );
 
-  // Original handleTaskUpdate for modal-based updates
   const handleTaskUpdate = async (updatedTask) => {
     try {
       const response = await updateTask(updatedTask.id, updatedTask);
-      setTasks(
-        tasks.map((task) => (task.id === response.id ? response : task))
+      const updatedTaskWithName = {
+        ...response,
+        assigneeName: users.find(u => u.id === response.assigned_to)?.username || 'Unassigned'
+      };
+      onTasksChange(prevTasks =>
+        prevTasks.map((task) => (task.id === response.id ? updatedTaskWithName : task))
       );
       setIsEditModalOpen(false);
+      setSelectedTask(null);
     } catch (error) {
       console.error("Failed to update task:", error);
     }
@@ -178,7 +168,11 @@ const TaskBoard = ({ project, users }) => {
         project_id: project.id,
         status: "todo",
       });
-      setTasks([...tasks, newTask]);
+      const newTaskWithName = {
+        ...newTask,
+        assigneeName: users.find(u => u.id === newTask.assigned_to)?.username || 'Unassigned'
+      };
+      onTasksChange(prevTasks => [...prevTasks, newTaskWithName]);
       setIsCreateModalOpen(false);
     } catch (error) {
       console.error("Failed to create task:", error);
@@ -200,26 +194,35 @@ const TaskBoard = ({ project, users }) => {
     return tasks.filter((task) => task.status === status) || [];
   };
 
-  const getAssigneeName = (assigneeId) => {
-    const assignee = users.find((u) => u.id === assigneeId);
-    return assignee?.username || "Unassigned";
+  // Get summary stats for the dashboard
+  const getTaskStats = () => {
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(
+      (task) => task.status === "done"
+    ).length;
+    const overdueTasks = tasks.filter((task) => {
+      if (!task.deadline) return false;
+      return new Date(task.deadline) < new Date();
+    }).length;
+
+    return { totalTasks, completedTasks, overdueTasks };
   };
 
-  // Cleanup debounced function on unmount
-  useEffect(() => {
-    return () => {
-      debouncedSync.cancel?.();
-    };
-  }, [debouncedSync]);
+  const { totalTasks, completedTasks, overdueTasks } = getTaskStats();
 
   return (
-    <div className="flex-1 p-6">
+    <div className="flex-1">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Tasks</h1>
-          <p className="text-gray-600 mt-1">
-            {tasks.length} task{tasks.length !== 1 ? "s" : ""}
-          </p>
+          <div className="flex gap-4 text-sm text-gray-600">
+            <span>
+              {totalTasks} total task{totalTasks !== 1 ? "s" : ""}
+            </span>
+            <span className="text-green-600">{completedTasks} completed</span>
+            {overdueTasks > 0 && (
+              <span className="text-red-600">{overdueTasks} overdue</span>
+            )}
+          </div>
         </div>
         <button
           onClick={() => setIsCreateModalOpen(true)}
@@ -253,12 +256,7 @@ const TaskBoard = ({ project, users }) => {
                   onClick={() => handleTaskClick(task)}
                   className="cursor-move hover:scale-105 transition-transform duration-200"
                 >
-                  <TaskCard
-                    task={{
-                      ...task,
-                      assigneeName: getAssigneeName(task.assigned_to),
-                    }}
-                  />
+                  <TaskCard task={task} />
                 </div>
               ))}
             </div>
