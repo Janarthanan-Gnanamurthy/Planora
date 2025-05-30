@@ -94,6 +94,7 @@ export default function ProjectPage() {
           owner_id: dbUser.id, // Set the owner as the current user's database ID
           collaborators: [dbUser.id], // Add the owner as the first collaborator
         });
+        addToast("Success!", "Project Created", "success");
 
         console.log("Created project:", newProject);
 
@@ -106,6 +107,8 @@ export default function ProjectPage() {
         // Navigate to the new project
         router.push(`/project/${newProject.id.replace(/-/g, "_")}`);
       } catch (error) {
+        addToast("Error!", "Error Creating Project", "error");
+
         console.error("Failed to create project:", error);
       }
     }

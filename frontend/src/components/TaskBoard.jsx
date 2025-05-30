@@ -5,6 +5,7 @@ import TaskCard from "./TaskCard";
 import CreateTaskModal from "./CreateTaskModal";
 import EditTaskModal from "./EditTaskModal";
 import { createTask, updateTask, deleteTask } from "../services/api";
+import { useToast } from "../hooks/useToast";
 
 // Debounce utility function
 const debounce = (func, wait) => {
@@ -20,6 +21,7 @@ const debounce = (func, wait) => {
 };
 
 const TaskBoard = ({ project, users, tasks, onTasksChange }) => {
+  const { addToast } = useToast();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -41,6 +43,7 @@ const TaskBoard = ({ project, users, tasks, onTasksChange }) => {
             updates.map(([taskId, taskData]) => updateTask(taskId, taskData))
           );
           pendingUpdatesRef.current.clear();
+          addToast("Success!", "Task updated  ", "success");
         } catch (error) {
           console.error("Failed to sync task updates:", error);
           // Optionally revert optimistic updates or show error
@@ -53,7 +56,9 @@ const TaskBoard = ({ project, users, tasks, onTasksChange }) => {
         try {
           await Promise.all(deletes.map((taskId) => deleteTask(taskId)));
           pendingDeletesRef.current.clear();
+          addToast("Success", "Task Deleted  ", "success");
         } catch (error) {
+          addToast("Error!", "Error Deleting Task", "error");
           console.error("Failed to delete tasks:", error);
           // Optionally restore deleted tasks or show error
         }
@@ -149,10 +154,14 @@ const TaskBoard = ({ project, users, tasks, onTasksChange }) => {
       const response = await updateTask(updatedTask.id, updatedTask);
       const updatedTaskWithName = {
         ...response,
-        assigneeName: users.find(u => u.id === response.assigned_to)?.username || 'Unassigned'
+        assigneeName:
+          users.find((u) => u.id === response.assigned_to)?.username ||
+          "Unassigned",
       };
-      onTasksChange(prevTasks =>
-        prevTasks.map((task) => (task.id === response.id ? updatedTaskWithName : task))
+      onTasksChange((prevTasks) =>
+        prevTasks.map((task) =>
+          task.id === response.id ? updatedTaskWithName : task
+        )
       );
       setIsEditModalOpen(false);
       setSelectedTask(null);
@@ -170,11 +179,15 @@ const TaskBoard = ({ project, users, tasks, onTasksChange }) => {
       });
       const newTaskWithName = {
         ...newTask,
-        assigneeName: users.find(u => u.id === newTask.assigned_to)?.username || 'Unassigned'
+        assigneeName:
+          users.find((u) => u.id === newTask.assigned_to)?.username ||
+          "Unassigned",
       };
-      onTasksChange(prevTasks => [...prevTasks, newTaskWithName]);
+      onTasksChange((prevTasks) => [...prevTasks, newTaskWithName]);
       setIsCreateModalOpen(false);
+      addToast("Success!", "Task Created  ", "success");
     } catch (error) {
+      addToast("Error!", "Error Creating Task  ", "error");
       console.error("Failed to create task:", error);
     }
   };

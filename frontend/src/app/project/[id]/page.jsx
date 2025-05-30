@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import TaskBoard from "../../../components/TaskBoard";
 import TaskTimeline from "../../../components/TaskTimeline";
 import EditTaskModal from "../../../components/EditTaskModal";
+import { useToast } from "../../../hooks/useToast";
 import {
   getProject,
   getUserByClerkId,
@@ -30,6 +31,7 @@ export default function ProjectPage({ params }) {
   const [selectedTask, setSelectedTask] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [tasks, setTasks] = useState([]);
+  const { addToast } = useToast();
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -116,6 +118,8 @@ export default function ProjectPage({ params }) {
   const handleTaskUpdate = async (updatedTask) => {
     try {
       const response = await updateTask(updatedTask.id, updatedTask);
+      addToast("Success!", "Task updated  ", "success");
+
       const updatedTaskWithName = {
         ...response,
         assigneeName:

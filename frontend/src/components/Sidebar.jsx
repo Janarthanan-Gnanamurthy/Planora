@@ -9,6 +9,7 @@ import {
   getUserByClerkId,
   getUsers,
 } from "../services/api";
+import { useToast } from "./Toast";
 
 const Sidebar = () => {
   const { user } = useUser();
@@ -19,6 +20,8 @@ const Sidebar = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteStatus, setInviteStatus] = useState("");
+
+  const { addToast } = useToast();
 
   const [projects, setProjects] = useState([]);
   const [users, setusers] = useState([]);
@@ -119,6 +122,7 @@ const Sidebar = () => {
           owner_id: dbUser.id, // Set the owner as the current user's database ID
           collaborators: [dbUser.id], // Add the owner as the first collaborator
         });
+        addToast("Success!", "Project Created Successfully  ", "success");
 
         console.log("Created project:", newProject);
 
@@ -131,6 +135,7 @@ const Sidebar = () => {
         router.push(`/project/${newProject.id.replace(/-/g, "_")}`);
       } catch (error) {
         console.error("Failed to create project:", error);
+        addToast("Error!", "Error Creating Project", "error");
       }
     }
   };
@@ -178,8 +183,8 @@ const Sidebar = () => {
   };
 
   return (
-    <div className="w-64 h-screen bg-gray-900 text-white p-4 fixed left-0 top-0 overflow-y-auto">
-      <div className="mb-8">
+    <div className="w-64  h-screen bg-gray-900 text-white p-4 fixed left-0 top-0 overflow-y-auto">
+      <div className="mb-8 ">
         <h2 className="text-xl font-bold">Projects</h2>
         <div className="mt-4 space-y-2">
           {projects.map((project) => (
