@@ -1,5 +1,6 @@
 // layout.jsx
 import { ClerkProvider } from "@clerk/nextjs";
+import { ToastProvider } from "../components/Toast";
 import { Inter } from "next/font/google";
 import Navbar from "../components/Navbar";
 import ClientUserSync from "../components/Userclientsync";
@@ -16,16 +17,18 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className={inter.className}>
-          {/* <ClientUserSync />
-           */}
-          <UserSync />
+      <ToastProvider>
+        <html lang="en">
+          <body className={inter.className}>
+            {/* <ClientUserSync />
+             */}
+            <UserSync />
 
-          <Navbar />
-          <main>{children}</main>
-        </body>
-      </html>
+            <Navbar />
+            <main>{children}</main>
+          </body>
+        </html>
+      </ToastProvider>
     </ClerkProvider>
   );
 }

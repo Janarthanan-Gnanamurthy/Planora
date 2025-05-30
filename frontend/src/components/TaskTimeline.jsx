@@ -12,6 +12,7 @@ import {
 import CreateTaskModal from "./CreateTaskModal";
 import EditTaskModal from "./EditTaskModal";
 import { createTask, updateTask, deleteTask } from "../services/api";
+import { useToast } from "../hooks/useToast";
 
 // Debounce utility function
 const debounce = (func, wait) => {
@@ -36,6 +37,8 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
   const [timelineRange, setTimelineRange] = useState(90); // Default 90 days
   const [viewMode, setViewMode] = useState("weeks"); // 'weeks', 'days', 'months'
 
+  const { addToast } = useToast();
+
   // Keep track of pending updates to send to server
   const pendingUpdatesRef = useRef(new Map());
   const pendingDeletesRef = useRef(new Set());
@@ -51,6 +54,7 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
             updates.map(([taskId, taskData]) => updateTask(taskId, taskData))
           );
           pendingUpdatesRef.current.clear();
+          addToast("Success!", "Task updated  ", "success");
         } catch (error) {
           console.error("Failed to sync task updates:", error);
         }
@@ -62,8 +66,10 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
         try {
           await Promise.all(deletes.map((taskId) => deleteTask(taskId)));
           pendingDeletesRef.current.clear();
+          addToast("Success!", "Task Deleted  ", "success");
         } catch (error) {
           console.error("Failed to delete tasks:", error);
+          addToast("Error!", "Error Deleting Task", "error");
         }
       }
     }, 500),
@@ -229,20 +235,6 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
 
   // Generate headers based on view mode
   const getTimelineHeaders = () => {
-    if (viewMode === "days") {
-      return timelineDates.map((date, index) => ({
-        key: date.toISOString().split("T")[0],
-        start: index,
-        end: index,
-        label: date.getDate().toString(),
-        sublabel:
-          date.getDate() === 1
-            ? date.toLocaleDateString("default", { month: "short" })
-            : "",
-        width: (1 / timelineDates.length) * 100,
-      }));
-    }
-
     if (viewMode === "months") {
       const months = [];
       let currentMonth = null;
@@ -308,6 +300,11 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
   const handleDragStart = (e, task) => {
     setDraggedTask(task);
     e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTask(null);
+    setIsOverDeleteZone(false);
   };
 
   const handleDragOver = (e) => {
@@ -385,7 +382,9 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
       };
       onTasksChange((prevTasks) => [...prevTasks, newTaskWithName]);
       setIsCreateModalOpen(false);
+      addToast("Success!", "Task Created  ", "success");
     } catch (error) {
+      addToast("Error!", "Error Creating Task  ", "error");
       console.error("Failed to create task:", error);
     }
   };
@@ -414,53 +413,59 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
     getTaskStats();
 
   return (
-    <div className="flex-1 space-y-4 md:space-y-6 p-4 md:p-6 overflow-x-hidden">
-      {/* Enhanced Header with stats and controls */}
+    <div className="flex-1 space-y-4 md:space-y-6 p-4 md:p-6">
       <div className="bg-white rounded-lg md:rounded-xl shadow-sm border border-gray-200 p-4 md:p-6">
         <div className="flex flex-col gap-4">
-          {/* Stats Section */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
-            <div className="flex items-center gap-2 md:gap-3">
-              <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Clock size={16} className="md:w-5 md:h-5 text-blue-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-lg md:text-2xl font-bold text-gray-900 truncate">
-                  {totalTasks}
-                </p>
-                <p className="text-xs md:text-sm text-gray-600">Total Tasks</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 md:gap-3">
-              <div className="w-8 h-8 md:w-10 md:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <div className="w-2 h-2 md:w-3 md:h-3 bg-green-600 rounded-full"></div>
-              </div>
-              <div className="min-w-0">
-                <p className="text-lg md:text-2xl font-bold text-green-600 truncate">
-                  {completionRate}%
-                </p>
-                <p className="text-xs md:text-sm text-gray-600">Completed</p>
-              </div>
-            </div>
-
-            {overdueTasks > 0 && (
-              <div className="flex items-center gap-2 md:gap-3">
-                <div className="w-8 h-8 md:w-10 md:h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Calendar size={16} className="md:w-5 md:h-5 text-red-600" />
+          {/* Compact Stats Section */}
+          <div className="flex items-center justify-between">
+            {/* Stats Row */}
+            <div className="flex items-center gap-4 md:gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 md:w-8 md:h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Clock size={14} className="md:w-4 md:h-4 text-blue-600" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-lg md:text-2xl font-bold text-red-600 truncate">
-                    {overdueTasks}
-                  </p>
-                  <p className="text-xs md:text-sm text-gray-600">Overdue</p>
+                <div>
+                  <span className="text-xl md:text-2xl font-bold text-gray-900">
+                    {totalTasks}
+                  </span>
+                  <span className="text-xs md:text-sm text-gray-500 ml-1">
+                    tasks
+                  </span>
                 </div>
               </div>
-            )}
+
+              {overdueTasks > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 md:w-8 md:h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                    <Calendar
+                      size={14}
+                      className="md:w-4 md:h-4 text-red-600"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-xl md:text-2xl font-bold text-red-600">
+                      {overdueTasks}
+                    </span>
+                    <span className="text-xs md:text-sm text-gray-500 ml-1">
+                      overdue
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Add Task Button - Right Aligned */}
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-sm hover:shadow-md text-sm md:text-base"
+            >
+              <Plus size={16} className="md:w-[18px] md:h-[18px]" />
+              <span className="font-medium hidden sm:inline">Add Task</span>
+            </button>
           </div>
 
           {/* Controls Section */}
-          <div className="flex flex-col sm:flex-row gap-2 md:gap-3 pt-4 border-t border-gray-100">
+          <div className="flex flex-col sm:flex-row gap-2 md:gap-3 pt-3 border-t border-gray-100">
             {/* Timeline Range Control */}
             <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 flex-1 sm:flex-none">
               <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
@@ -469,13 +474,12 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
               <select
                 value={timelineRange}
                 onChange={(e) => setTimelineRange(Number(e.target.value))}
-                className="bg-white border border-gray-300 rounded-md px-2 md:px-3 py-1 text-xs md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 sm:flex-none"
+                className="bg-white border text-black border-gray-300 rounded-md px-2 md:px-3 py-1 text-xs md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 sm:flex-none"
               >
                 <option value={30}>1 Month</option>
                 <option value={60}>2 Months</option>
                 <option value={90}>3 Months</option>
                 <option value={120}>4 Months</option>
-                <option value={180}>6 Months</option>
               </select>
             </div>
 
@@ -487,28 +491,18 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
               <select
                 value={viewMode}
                 onChange={(e) => setViewMode(e.target.value)}
-                className="bg-white border border-gray-300 rounded-md px-2 md:px-3 py-1 text-xs md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 sm:flex-none"
+                className="bg-white border text-black border-gray-300 rounded-md px-2 md:px-3 py-1 text-xs md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 sm:flex-none"
               >
                 <option value="weeks">Weeks</option>
-                <option value="days">Days</option>
                 <option value="months">Months</option>
               </select>
             </div>
-
-            {/* Add Task Button */}
-            <button
-              onClick={() => setIsCreateModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-sm hover:shadow-md text-sm md:text-base"
-            >
-              <Plus size={16} className="md:w-[18px] md:h-[18px]" />
-              <span className="font-medium">Add Task</span>
-            </button>
           </div>
         </div>
       </div>
 
       {/* Enhanced Timeline Component */}
-      <div className="bg-white rounded-lg md:rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg md:rounded-xl shadow-sm border border-gray-200">
         {/* Timeline Header */}
         <div className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
           <div className="flex">
@@ -519,18 +513,15 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
               </h3>
             </div>
 
-            {/* Timeline dates header */}
+            {/* Timeline dates header - with horizontal scroll */}
             <div className="flex-1 overflow-x-auto">
-              <div
-                className="flex bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200"
-                style={{ minWidth: "600px" }}
-              >
+              <div className="flex bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 min-w-[800px]">
                 {timelineHeaders.map((header) => (
                   <div
                     key={header.key}
                     className="border-r border-gray-200 text-center py-2 md:py-3 text-xs md:text-sm font-medium text-gray-700 bg-white/50 flex-shrink-0"
                     style={{
-                      width: `${header.width}%`,
+                      width: `${(header.width * 800) / 100}px`,
                       minWidth: viewMode === "days" ? "25px" : "50px",
                     }}
                   >
@@ -549,7 +540,7 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
           </div>
         </div>
 
-        {/* Timeline Content */}
+        {/* Timeline Content - with synchronized horizontal scroll */}
         <div className="max-h-[400px] md:max-h-[600px] overflow-y-auto">
           {Object.entries(tasksByStatus).map(([status, statusTasks]) => (
             <div
@@ -558,12 +549,12 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
             >
               {/* Enhanced Section Header */}
               <div
-                className={`flex items-center px-3 md:px-4 py-3 md:py-4 ${statusConfig[status]?.bgColor} hover:bg-opacity-80 cursor-pointer border-b border-gray-200 transition-colors duration-200`}
+                className={`flex items-center ${statusConfig[status]?.bgColor} hover:bg-opacity-80 cursor-pointer border-b border-gray-200 transition-colors duration-200`}
                 onClick={() => toggleSection(status)}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, status)}
               >
-                <div className="w-48 sm:w-64 lg:w-80 flex-shrink-0">
+                <div className="w-48 sm:w-64 lg:w-80 flex-shrink-0 px-3 md:px-4 py-3 md:py-4">
                   <div className="flex items-center">
                     {collapsedSections[status] ? (
                       <ChevronRight
@@ -591,6 +582,11 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
                     </span>
                   </div>
                 </div>
+
+                {/* Empty timeline area for section header */}
+                <div className="flex-1 overflow-x-auto">
+                  <div className="min-w-[800px] h-full"></div>
+                </div>
               </div>
 
               {/* Enhanced Tasks */}
@@ -611,6 +607,7 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
                       className="flex border-b border-gray-50 hover:bg-gray-50/50 transition-colors duration-200 group"
                       draggable
                       onDragStart={(e) => handleDragStart(e, task)}
+                      onDragEnd={handleDragEnd}
                     >
                       {/* Enhanced Task Info */}
                       <div className="w-48 sm:w-64 lg:w-80 p-3 md:p-4 border-r border-gray-200 flex-shrink-0">
@@ -627,12 +624,12 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
                           </h4>
 
                           <div className="flex flex-col gap-1 md:gap-2">
-                            <div className="flex items-center bg-gray-100 rounded-full px-2 py-1 w-fit">
+                            <div className=" flex items-center bg-gray-100 rounded-full px-2 py-1 w-fit">
                               <User
                                 size={10}
-                                className="md:w-3 md:h-3 mr-1 flex-shrink-0"
+                                className="md:w-3 md:h-3 text-black mr-1 flex-shrink-0"
                               />
-                              <span className="truncate text-xs font-medium max-w-20 md:max-w-24">
+                              <span className="truncate  text-xs text-black font-medium max-w-20 md:max-w-24">
                                 {assignedUser?.username ||
                                   task.assigneeName ||
                                   "Unassigned"}
@@ -673,45 +670,51 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
                         </div>
                       </div>
 
-                      {/* Enhanced Timeline Bar */}
-                      <div className="flex-1 relative p-3 md:p-4 overflow-hidden">
-                        <div
-                          className="relative h-6 md:h-8 bg-gray-100 rounded-lg overflow-hidden"
-                          style={{ minWidth: "600px" }}
-                        >
-                          {/* Grid lines */}
-                          <div className="absolute inset-0 flex">
-                            {timelineHeaders.map((header) => (
-                              <div
-                                key={header.key}
-                                className="border-r border-gray-200 h-full flex-shrink-0"
-                                style={{ width: `${header.width}%` }}
-                              />
-                            ))}
-                          </div>
+                      {/* Enhanced Timeline Bar - with horizontal scroll */}
+                      <div className="flex-1 overflow-x-auto">
+                        <div className="relative z-[0] py-2 px-6 md:py-6 md:px-5 min-w-[800px]">
+                          <div className="relative h-10 md:h-12 bg-gray-100 rounded-lg overflow-hidden">
+                            {/* Grid lines */}
+                            {/* <div className="absolute inset-0 flex">
+                              {timelineHeaders.map((header) => (
+                                <div
+                                  key={header.key}
+                                  className="border-r border-gray-200 h-full flex-shrink-0"
+                                  style={{
+                                    width: `${(header.width * 1416) / 100}px`,
+                                  }}
+                                />
+                              ))}
+                            </div> */}
 
-                          {/* Enhanced Task Bar */}
-                          {timelineProps && (
-                            <div
-                              className={`absolute top-0.5 md:top-1 bottom-0.5 md:bottom-1 rounded-md ${getTaskColor(
-                                task
-                              )} hover:scale-105 cursor-pointer transition-all duration-200 group-hover:shadow-md z-10`}
-                              style={{
-                                left: timelineProps.left,
-                                width: timelineProps.width,
-                              }}
-                              onClick={() => handleTaskClick(task)}
-                              title={`${task.title} - ${
-                                task.deadline
-                                  ? formatDate(task.deadline)
-                                  : "No deadline"
-                              }`}
-                            >
-                              <div className="px-2 md:px-3 py-0.5 md:py-1 text-xs text-white font-medium truncate">
-                                {task.title}
+                            {/* Enhanced Task Bar */}
+                            {timelineProps && (
+                              <div
+                                className={`absolute top-0.5 md:top-1 bottom-0.5 md:bottom-1 rounded-md ${getTaskColor(
+                                  task
+                                )} hover:scale-105 cursor-pointer transition-all duration-200 group-hover:shadow-md z-10`}
+                                style={{
+                                  left: `${
+                                    (parseFloat(timelineProps.left) * 800) / 100
+                                  }px`,
+                                  width: `${
+                                    (parseFloat(timelineProps.width) * 800) /
+                                    100
+                                  }px`,
+                                }}
+                                onClick={() => handleTaskClick(task)}
+                                title={`${task.title} - ${
+                                  task.deadline
+                                    ? formatDate(task.deadline)
+                                    : "No deadline"
+                                }`}
+                              >
+                                <div className="px-2 md:px-3 py-0.5 md:py-1 text-xs text-white font-medium truncate">
+                                  {task.title}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -722,7 +725,6 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
         </div>
       </div>
 
-      {/* Enhanced Delete Zone */}
       <div
         className={`fixed bottom-4 md:bottom-8 left-1/2 transform -translate-x-1/2 z-[60] transition-all duration-300 ${
           draggedTask
