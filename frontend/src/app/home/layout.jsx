@@ -2,8 +2,11 @@
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
+import { useState } from "react";
 
 export default function HomeLayout({ children }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
 
@@ -24,8 +27,14 @@ export default function HomeLayout({ children }) {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 ml-64">{children}</main>
+      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <main
+        className={`flex-1 transition-all duration-300 ease-in-out ${
+          isCollapsed ? "ml-16" : "ml-72"
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 }

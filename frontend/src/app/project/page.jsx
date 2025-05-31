@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Plus, Users, Calendar, MoreVertical } from "lucide-react";
+import { Plus, Users, Calendar, MoreVertical, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createProject, getProjects, getUsers } from "../../services/api";
+import { useToast } from "../../components/Toast";
 
 export default function ProjectPage() {
   const { user } = useUser();
@@ -14,6 +15,8 @@ export default function ProjectPage() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+
+  const { addToast } = useToast();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -177,59 +180,65 @@ export default function ProjectPage() {
         </div>
 
         {/* Create Project Modal */}
+
         {isCreating && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                Create New Project
-              </h2>
-              <form onSubmit={handleAddProject} className="space-y-6">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
+            <div className="bg-white rounded-3xl p-8 w-full max-w-md mx-4 shadow-2xl border border-white/50 animate-in zoom-in-95 duration-300">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-slate-800">
+                  Create New Project
+                </h3>
+                <button
+                  onClick={() => setShowCreateProject(false)}
+                  className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-all duration-300 hover:scale-110"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Project Name
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Project Name *
                   </label>
                   <input
                     type="text"
                     value={newProjectName}
                     onChange={(e) => setNewProjectName(e.target.value)}
+                    className="w-full text-black px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 hover:border-slate-300"
                     placeholder="Enter project name"
-                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
-                    autoFocus
-                    required
                   />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="block  text-sm font-semibold text-slate-700 mb-2">
                     Description
                   </label>
                   <textarea
                     value={newProjectDesc}
                     onChange={(e) => setNewProjectDesc(e.target.value)}
-                    placeholder="Enter project description (optional)"
-                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors resize-none"
-                    rows={4}
+                    className="w-full text-black px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 hover:border-slate-300 resize-none"
+                    placeholder="Enter project description"
+                    rows={3}
                   />
                 </div>
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCreating(false);
-                      setNewProjectName("");
-                      setNewProjectDesc("");
-                    }}
-                    className="flex-1 px-6 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium shadow-lg"
-                  >
-                    Create Project
-                  </button>
-                </div>
-              </form>
+              </div>
+
+              <div className="flex gap-3 mt-8">
+                <button
+                  onClick={() => setShowCreateProject(false)}
+                  className="flex-1 px-6 py-3 border border-slate-200 text-slate-700 rounded-2xl hover:bg-slate-50 transition-all duration-300 font-medium hover:scale-105"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddProject}
+                  disabled={!newProjectName.trim()}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 font-medium hover:scale-105 shadow-lg hover:shadow-xl"
+                >
+                  Create Project
+                </button>
+              </div>
             </div>
           </div>
         )}

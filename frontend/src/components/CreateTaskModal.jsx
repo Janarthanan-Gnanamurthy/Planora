@@ -49,7 +49,7 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, projectUsers }) => {
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300"
       onClick={handleOverlayClick}
     >
       <div className="bg-white rounded-lg p-6 w-full max-w-md relative transform transition-all duration-300 ease-in-out max-h-[90vh] overflow-y-auto">

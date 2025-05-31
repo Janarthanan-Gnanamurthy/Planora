@@ -1,9 +1,12 @@
-'use client';
-import { useUser } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
-import Sidebar from '../../components/Sidebar';
+"use client";
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import Sidebar from "../../components/Sidebar";
+import { useState } from "react";
+import Navbar from "../../components/Navbar";
 
 export default function ProjectLayout({ children }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
 
@@ -18,16 +21,38 @@ export default function ProjectLayout({ children }) {
 
   // Redirect if not signed in
   if (!isSignedIn) {
-    router.push('/sign-in');
+    router.push("/sign-in");
     return null;
   }
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 ml-64">
+      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <main
+        className={`flex-1 transition-all duration-300 ease-in-out ${
+          isCollapsed ? "ml-16" : "ml-72"
+        }`}
+      >
         {children}
-      </main>
+      </main>{" "}
     </div>
   );
-} 
+}
+
+// import { useState } from 'react';
+// import Sidebar from './Sidebar';
+
+// export default function Layout({ children }) {
+//   const [isCollapsed, setIsCollapsed] = useState(false);
+
+//   return (
+//     <div className="flex min-h-screen bg-gray-50">
+//       <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+//       <main className={`flex-1 transition-all duration-300 ease-in-out ${
+//         isCollapsed ? 'ml-16' : 'ml-72'
+//       }`}>
+//         {children}
+//       </main>
+//     </div>
+//   );
+// }

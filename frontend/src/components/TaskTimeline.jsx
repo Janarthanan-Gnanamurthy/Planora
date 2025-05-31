@@ -413,7 +413,7 @@ const TaskTimeline = ({ project, users, tasks, onTasksChange }) => {
     getTaskStats();
 
   return (
-    <div className="flex-1 space-y-4 md:space-y-6 p-4 md:p-6">
+    <div className="flex-1 ">
       <div className="bg-white rounded-lg md:rounded-xl shadow-sm border border-gray-200 p-4 md:p-6">
         <div className="flex flex-col gap-4">
           {/* Compact Stats Section */}
