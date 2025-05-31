@@ -1,77 +1,119 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { Plus, Users } from "lucide-react";
+import {
+  Plus,
+  Users,
+  Home,
+  FolderOpen,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Settings,
+  Search,
+  X,
+} from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter, usePathname } from "next/navigation";
-import {
-  createProject,
-  getProjects,
-  getUserByClerkId,
-  getUsers,
-} from "../services/api";
+import { createProject, getProjects, getUsers } from "../services/api";
 import { useToast } from "./Toast";
 
-const Sidebar = () => {
+const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
   const { user } = useUser();
   const router = useRouter();
   const pathname = usePathname();
-  const [isAddingProject, setIsAddingProject] = useState(false);
+
+  // Sidebar state
+  // const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isProjectsExpanded, setIsProjectsExpanded] = useState(true);
+  const [showAllProjects, setShowAllProjects] = useState(false);
+
+  // Project management state
+  const [showCreateProject, setShowCreateProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteStatus, setInviteStatus] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { addToast } = useToast();
 
   const [projects, setProjects] = useState([]);
-  const [users, setusers] = useState([]);
-  const [collaborators, setCollaborators] = useState([]);
+  const [users, setUsers] = useState([]);
 
-  // Get the current project ID from the URL and convert underscores back to hyphens
-  const currentProjectId = pathname.startsWith("/project/")
-    ? pathname.split("/")[2]?.replace(/_/g, "-")
+  // Get the current project ID from the URL (keep underscores as they are)
+  const currentProjectIdFromUrl = pathname.startsWith("/project/")
+    ? pathname.split("/")[2]
     : null;
+
+  // Convert underscores to hyphens for API calls (if needed)
+  const currentProjectId = currentProjectIdFromUrl?.replace(/_/g, "-");
+
+  const isHome = pathname === "/" || pathname === "/dashboard";
+
+  // Check if we're on a specific project page (has an ID after /project/)
+  const isOnSpecificProjectPage =
+    pathname.startsWith("/project/") &&
+    pathname.split("/").length === 3 &&
+    pathname.split("/")[2] &&
+    pathname.split("/")[2].length > 0;
+
+  // NEW: Function to check if we should show the invite team button
+  // Change this condition based on your routing structure
+  const shouldShowInviteButton = () => {
+    // If you're using /projects/{id} (plural):
+    // return pathname.startsWith("/projects/") &&
+    //        pathname.split("/").length === 3 &&
+    //        pathname.split("/")[2] &&
+    //        pathname.split("/")[2].length > 0;
+
+    // If you're using /project/{id} (singular) - current structure:
+    return (
+      pathname.startsWith("/project/") &&
+      pathname.split("/").length === 3 &&
+      pathname.split("/")[2] &&
+      pathname.split("/")[2].length > 0
+    );
+  };
+
+  // Filter projects based on search term
+  const filteredProjects = projects.filter((project) =>
+    project.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Show limited projects or all based on toggle
+  const displayedProjects = showAllProjects
+    ? filteredProjects
+    : filteredProjects.slice(0, 5);
 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        // Get the clerk user ID from useUser hook
         const clerkUserId = user.id;
-
-        // Fetch all projects and users
         const projectsList = await getProjects();
         const usersList = await getUsers();
 
-        // Find the database user by matching clerkId
         const dbUser = usersList.find((u) => u.clerkId === clerkUserId);
 
         if (!dbUser) {
           console.error("User not found in database");
-          setProjects([]); // Show no projects if user not found
+          setProjects([]);
           return;
         }
 
-        console.log("Found database user:", dbUser);
-        console.log("Database user ID:", dbUser.id);
-
-        // Filter projects where the user's database ID is in the collaborators array
         const userProjects = projectsList.filter((project) => {
-          // Ensure collaborators exists and is an array
           if (!project.collaborators || !Array.isArray(project.collaborators)) {
             return false;
           }
-          // Check if user's database ID is in the collaborators array
           return project.collaborators.includes(dbUser.id);
         });
 
-        console.log("Filtered user projects:", userProjects);
-        console.log("All users:", usersList);
-
         setProjects(userProjects);
-        setusers(usersList);
+        setUsers(usersList);
       } catch (error) {
         console.error("Failed to fetch projects:", error);
-        setProjects([]); // Show no projects on error
+        setProjects([]);
       }
     };
 
@@ -84,7 +126,6 @@ const Sidebar = () => {
     if (!name || typeof name !== "string") {
       return "?";
     }
-
     return name
       .split(" ")
       .map((word) => word[0])
@@ -92,51 +133,56 @@ const Sidebar = () => {
       .toUpperCase();
   };
 
-  // Helper function to get user object by ID
   const getUserById = (userId) => {
     return users.find((user) => user.id === userId);
   };
 
-  const handleAddProject = async (e) => {
-    e.preventDefault();
-    if (newProjectName.trim()) {
-      try {
-        // Get the clerk user ID from useUser hook
-        const clerkUserId = user.id;
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) {
+      addToast("Error!", "Project name is required", "error");
+      return;
+    }
 
-        // Find the database user by matching clerkId from the users array we already have
-        const dbUser = users.find((u) => u.clerkId === clerkUserId);
+    try {
+      const clerkUserId = user.id;
+      const dbUser = users.find((u) => u.clerkId === clerkUserId);
 
-        if (!dbUser) {
-          console.error("User not found in database");
-          return;
-        }
+      console.log("sjhsgvweff", dbUser);
 
-        console.log("Creating project with user:", dbUser);
-        console.log("Owner ID:", dbUser.id);
-
-        // Create new project with owner_id and add owner as collaborator
-        const newProject = await createProject({
-          name: newProjectName,
-          description: "",
-          owner_id: dbUser.id, // Set the owner as the current user's database ID
-          collaborators: [dbUser.id], // Add the owner as the first collaborator
-        });
-        addToast("Success!", "Project Created Successfully  ", "success");
-
-        console.log("Created project:", newProject);
-
-        // Add the new project to the projects list
-        setProjects([...projects, newProject]);
-        setNewProjectName("");
-        setIsAddingProject(false);
-
-        // Navigate to the new project
-        router.push(`/project/${newProject.id.replace(/-/g, "_")}`);
-      } catch (error) {
-        console.error("Failed to create project:", error);
-        addToast("Error!", "Error Creating Project", "error");
+      if (!dbUser) {
+        console.error("User not found in database");
+        addToast("Error!", "User not found in database", "error");
+        return;
       }
+
+      const projectData = {
+        name: newProjectName.trim(),
+        description: newProjectDesc.trim() || "",
+        owner_id: dbUser.id,
+        collaborators: [dbUser.id],
+      };
+
+      console.log("Creating project with data:", projectData);
+
+      const newProject = await createProject(projectData);
+
+      console.log("Project created successfully:", newProject);
+
+      addToast("Success!", "Project Created Successfully", "success");
+      setProjects([...projects, newProject]);
+      setNewProjectName("");
+      setNewProjectDesc("");
+      setShowCreateProject(false);
+
+      // Navigate to the new project
+      router.push(`/project/${newProject.id.replace(/-/g, "_")}`);
+    } catch (error) {
+      console.error("Failed to create project:", error);
+      addToast(
+        "Error!",
+        `Error Creating Project: ${error.message || "Unknown error"}`,
+        "error"
+      );
     }
   };
 
@@ -177,157 +223,378 @@ const Sidebar = () => {
     }
   };
 
-  // Helper function to check if project is currently active
   const isProjectActive = (projectId) => {
     return currentProjectId === projectId;
   };
 
   return (
-    <div className="w-64  h-screen bg-gray-900 text-white p-4 fixed left-0 top-0 overflow-y-auto">
-      <div className="mb-8 ">
-        <h2 className="text-xl font-bold">Projects</h2>
-        <div className="mt-4 space-y-2">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              onClick={() => {
-                router.push(`/project/${project.id.replace(/-/g, "_")}`);
-              }}
-              className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                isProjectActive(project.id)
-                  ? "bg-blue-600 shadow-lg border-l-4 border-blue-400"
-                  : "hover:bg-gray-800 hover:shadow-md"
-              }`}
-            >
-              <h3
-                className={`font-medium ${
-                  isProjectActive(project.id)
-                    ? "text-white font-semibold"
-                    : "text-gray-200"
-                }`}
-              >
-                {project.name}
-              </h3>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {project.collaborators?.map((collaboratorId, index) => {
-                  const collaboratorUser = getUserById(collaboratorId);
-                  return (
-                    <div
-                      key={collaboratorId || `collaborator-${index}`}
-                      className={`px-2 py-1 rounded text-xs transition-colors ${
-                        isProjectActive(project.id)
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-700 text-gray-300"
-                      }`}
-                      title={collaboratorUser?.username || "Unknown User"}
-                    >
-                      {getInitials(
-                        collaboratorUser?.username || "Unknown User"
-                      )}
-                    </div>
-                  );
-                })}
+    <>
+      {/* Sidebar */}
+      <div
+        className={`${
+          isCollapsed ? "w-19" : "w-72"
+        } h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white fixed left-0 top-0 overflow-hidden transition-all duration-300 ease-in-out shadow-2xl border-r border-slate-700/50 z-40`}
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-slate-700/50">
+          <div className="flex items-center justify-between">
+            {!isCollapsed && (
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                  <FolderOpen size={18} className="text-white" />
+                </div>
+                <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  Planora
+                </h1>
               </div>
-            </div>
-          ))}
+            )}
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors duration-200"
+            >
+              {isCollapsed ? (
+                <ChevronRight size={18} />
+              ) : (
+                <ChevronLeft size={18} />
+              )}
+            </button>
+          </div>
         </div>
 
-        {isAddingProject ? (
-          <form onSubmit={handleAddProject} className="mt-4">
-            <input
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              placeholder="Project name"
-              className="w-full p-2 rounded bg-gray-800 text-white border border-gray-700 focus:border-blue-500 focus:outline-none"
-              autoFocus
-            />
-            <div className="mt-2 space-x-2">
+        {/* Content */}
+        <div className="p-4 flex flex-col h-full">
+          {/* Home Section */}
+          <div className="mb-6">
+            <button
+              onClick={() => router.push("/home")}
+              className={`w-full flex items-center gap-3 p-2 rounded-xl transition-all duration-200 group ${
+                isHome
+                  ? "bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg shadow-blue-500/25"
+                  : "hover:bg-slate-700/50"
+              }`}
+            >
+              <Home
+                size={24}
+                className={
+                  isHome
+                    ? "text-white"
+                    : "text-slate-400 group-hover:text-white"
+                }
+              />
+              {!isCollapsed && (
+                <span
+                  className={`font-medium ${
+                    isHome
+                      ? "text-white"
+                      : "text-slate-300 group-hover:text-white"
+                  }`}
+                >
+                  Home
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Projects Section */}
+          <div className="flex-1 overflow-hidden">
+            <div className="mb-4">
               <button
-                type="submit"
-                className="px-3 py-1 bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+                onClick={() =>
+                  !isCollapsed && setIsProjectsExpanded(!isProjectsExpanded)
+                }
+                className="w-full flex items-center justify-between p-2 hover:bg-slate-700/50 rounded-lg transition-colors duration-200"
               >
-                Add
+                <div className="flex items-center gap-2">
+                  <FolderOpen size={24} className="text-slate-400" />
+                  {!isCollapsed && (
+                    <span className="font-medium text-slate-300">Projects</span>
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-slate-700 px-2 py-1 rounded-full text-slate-300">
+                      {projects.length}
+                    </span>
+                    {isProjectsExpanded ? (
+                      <ChevronUp size={16} />
+                    ) : (
+                      <ChevronDown size={16} />
+                    )}
+                  </div>
+                )}
               </button>
+            </div>
+
+            {/* Search Bar */}
+            {!isCollapsed && isProjectsExpanded && projects.length > 3 && (
+              <div className="mb-4">
+                <div className="relative">
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search projects..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-lg text-sm text-white placeholder-slate-400 focus:border-blue-500/50 focus:outline-none transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Projects List */}
+            {(!isCollapsed && isProjectsExpanded) || isCollapsed ? (
+              <div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar h-[300px]">
+                {displayedProjects.map((project) => (
+                  <div
+                    key={project.id}
+                    onClick={() => {
+                      router.push(`/project/${project.id.replace(/-/g, "_")}`);
+                    }}
+                    className={`group cursor-pointer transition-all duration-200 ${
+                      isProjectActive(project.id)
+                        ? "bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-l-4 border-blue-500"
+                        : "hover:bg-slate-700/30"
+                    } rounded-lg ${isCollapsed ? "p-2" : "p-3"}`}
+                  >
+                    {isCollapsed ? (
+                      <div
+                        className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                        title={project.name}
+                      >
+                        {project.name.charAt(0).toUpperCase()}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                            {project.name.charAt(0).toUpperCase()}
+                          </div>
+                          <h3
+                            className={`font-medium truncate flex-1 ${
+                              isProjectActive(project.id)
+                                ? "text-white"
+                                : "text-slate-200 group-hover:text-white"
+                            }`}
+                          >
+                            {project.name}
+                          </h3>
+                        </div>
+
+                        {/* Collaborators */}
+                        <div className="flex items-center gap-2 ml-11">
+                          <div className="flex -space-x-2">
+                            {project.collaborators
+                              ?.slice(0, 3)
+                              .map((collaboratorId, index) => {
+                                const collaboratorUser =
+                                  getUserById(collaboratorId);
+                                return (
+                                  <div
+                                    key={
+                                      collaboratorId || `collaborator-${index}`
+                                    }
+                                    className="w-6 h-6 bg-slate-600 rounded-full flex items-center justify-center text-xs font-medium border-2 border-slate-800"
+                                    title={
+                                      collaboratorUser?.username ||
+                                      "Unknown User"
+                                    }
+                                  >
+                                    {getInitials(
+                                      collaboratorUser?.username ||
+                                        "Unknown User"
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            {project.collaborators?.length > 3 && (
+                              <div className="w-6 h-6 bg-slate-500 rounded-full flex items-center justify-center text-xs font-medium border-2 border-slate-800">
+                                +{project.collaborators.length - 3}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+
+                {/* Show more/less toggle */}
+                {!isCollapsed && filteredProjects.length > 5 && (
+                  <button
+                    onClick={() => setShowAllProjects(!showAllProjects)}
+                    className="w-full p-2 text-sm text-slate-400 hover:text-white transition-colors duration-200 flex items-center justify-center gap-2"
+                  >
+                    {showAllProjects ? (
+                      <>
+                        <ChevronUp size={16} />
+                        Show Less
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown size={16} />
+                        Show {filteredProjects.length - 5} More
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+            {/* Add Project and Conditional Invite Team */}
+            {!isCollapsed && isProjectsExpanded && (
+              <div className="mt-4 space-y-3">
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowCreateProject(true)}
+                    className="w-full p-3 flex items-center justify-center gap-2 bg-slate-800/50 rounded-lg hover:bg-slate-700/50 transition-all duration-200 border border-slate-700/50 hover:border-slate-600/50 group"
+                  >
+                    <Plus
+                      size={18}
+                      className="text-slate-400 group-hover:text-white transition-colors"
+                    />
+                    <span className="text-slate-400 group-hover:text-white transition-colors font-medium">
+                      New Project
+                    </span>
+                  </button>
+
+                  {/* MODIFIED: Conditionally render Invite Team button */}
+                  {shouldShowInviteButton() && (
+                    <button
+                      onClick={() => setShowInviteModal(true)}
+                      className="w-full p-3 flex items-center justify-center gap-2 bg-slate-800/50 rounded-lg hover:bg-slate-700/50 transition-all duration-200 border border-slate-700/50 hover:border-slate-600/50 group"
+                    >
+                      <Users
+                        size={18}
+                        className="text-slate-400 group-hover:text-white transition-colors"
+                      />
+                      <span className="text-slate-400 group-hover:text-white transition-colors font-medium">
+                        Invite Team
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Create Project Modal */}
+      {showCreateProject && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md mx-4 shadow-2xl border border-white/50 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-slate-800">
+                Create New Project
+              </h3>
               <button
-                type="button"
-                onClick={() => setIsAddingProject(false)}
-                className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition-colors"
+                onClick={() => setShowCreateProject(false)}
+                className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-all duration-300 hover:scale-110"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Project Name *
+                </label>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="w-full text-black px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 hover:border-slate-300"
+                  placeholder="Enter project name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  value={newProjectDesc}
+                  onChange={(e) => setNewProjectDesc(e.target.value)}
+                  className="w-full text-black px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 hover:border-slate-300 resize-none"
+                  placeholder="Enter project description"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <button
+                onClick={() => setShowCreateProject(false)}
+                className="flex-1 px-6 py-3 border border-slate-200 text-slate-700 rounded-2xl hover:bg-slate-50 transition-all duration-300 font-medium hover:scale-105"
               >
                 Cancel
               </button>
+              <button
+                onClick={handleCreateProject}
+                disabled={!newProjectName.trim()}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 font-medium hover:scale-105 shadow-lg hover:shadow-xl"
+              >
+                Create Project
+              </button>
             </div>
-          </form>
-        ) : (
-          <button
-            onClick={() => setIsAddingProject(true)}
-            className="mt-4 w-full p-2 flex items-center justify-center gap-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            <Plus size={20} />
-            Add Project
-          </button>
-        )}
-      </div>
-
-      {currentProjectId && (
-        <div className="mt-auto pt-4 border-t border-gray-800">
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="w-full p-2 flex items-center justify-center gap-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors "
-          >
-            <Users size={20} />
-            Invite Collaborators
-          </button>
+          </div>
         </div>
       )}
 
+      {/* Invite Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-gray-800 mb-4">
               Invite Collaborator
             </h3>
             <form onSubmit={handleInviteSubmit}>
               <div className="mb-4">
-                <label className="block text-black mb-2">Email Address</label>
+                <label className="block text-gray-700 mb-2 font-medium">
+                  Email Address
+                </label>
                 <input
                   type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full p-2 border rounded focus:border-blue-500 focus:outline-none text-black"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-800 transition-colors"
                   placeholder="Enter email address"
                   required
                   disabled={inviteStatus === "sending"}
                 />
               </div>
               {inviteStatus === "success" && (
-                <div className="mb-4 text-green-600 font-medium">
+                <div className="mb-4 text-green-600 font-medium bg-green-50 p-3 rounded-lg">
                   Invitation sent successfully!
                 </div>
               )}
               {inviteStatus === "error" && (
-                <div className="mb-4 text-red-600 font-medium">
+                <div className="mb-4 text-red-600 font-medium bg-red-50 p-3 rounded-lg">
                   Failed to send invitation. Please try again.
                 </div>
               )}
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowInviteModal(false);
                     setInviteStatus("");
                   }}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={inviteStatus === "sending"}
-                  className={`px-4 py-2 text-white rounded transition-colors ${
+                  className={`px-6 py-2 text-white rounded-lg transition-colors ${
                     inviteStatus === "sending"
                       ? "bg-blue-400 cursor-not-allowed"
-                      : "bg-blue-600 hover:bg-blue-700"
+                      : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
                   }`}
                 >
                   {inviteStatus === "sending"
@@ -339,6 +606,38 @@ const Sidebar = () => {
           </div>
         </div>
       )}
+
+      {/* Custom Scrollbar Styles */}
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(51, 65, 85, 0.1);
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.3);
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(148, 163, 184, 0.5);
+        }
+      `}</style>
+    </>
+  );
+};
+
+export const SidebarLayout = ({ children }) => {
+  return (
+    <div className="flex">
+      <Sidebar />
+      <main
+        className="flex-1 transition-all duration-300 ease-in-out"
+        style={{ marginLeft: "var(--sidebar-width, 18rem)" }}
+      >
+        {children}
+      </main>
     </div>
   );
 };

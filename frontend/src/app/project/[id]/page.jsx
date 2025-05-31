@@ -172,7 +172,7 @@ export default function ProjectPage({ params }) {
         <div className="mb-6">
           <div className="flex justify-between items-start">
             <h1 className="text-3xl font-bold text-gray-800">{project.name}</h1>
-            <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm p-1">
+            <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm ">
               <button
                 onClick={() => setViewMode("board")}
                 className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
