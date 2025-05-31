@@ -2,11 +2,13 @@
 from fastapi import FastAPI, HTTPException, Body, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import uuid
 import os
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
+from agents import ai_smart_assistant, ai_project_insights, ai_task_optimizer, ai_smart_task_creation
+
 
 import google.generativeai as genai
 
@@ -92,6 +94,7 @@ def get_user(user_id: str, db: Session = Depends(database.get_db)):
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
+    
 
 # Projects
 @app.post("/projects", response_model=schemas.Project, status_code=201, tags=["Projects"])
@@ -351,93 +354,128 @@ def list_comments(
 
 
 # --- AI ENDPOINTS ---
-def call_gemini(prompt: str) -> str:
-    """
-    Helper function to call the Gemini API.
-    Returns the generated text or an error message.
-    """
-    if model is None:
-        return "Gemini model not initialized. Please check API key and configuration."
-    try:
-        response = model.generate_content(prompt)
-        # Ensure response.text is accessed safely
-        if response and hasattr(response, 'text'):
-            return response.text
-        elif response and response.candidates and response.candidates[0].content.parts:
-             return response.candidates[0].content.parts[0].text
-        else:
-            return "Gemini response format not recognized or empty."
-    except Exception as e:
-        return f"Gemini SDK error: {str(e)}"
 
-@app.post("/ai/summarize_task", tags=["AI"])
-def ai_summarize_task(
+@app.post("/ai/smart_assistant", tags=["AI"])
+async def smart_ai_assistant(
     user_id: str = Body(...),
-    project_id: str = Body(None),
-    description: str = Body(...),
-    db: Session = Depends(database.get_db)
-):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    project = db.query(models.Project).filter(models.Project.id == project_id).first() if project_id else None
-    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
-    project_info = f"Project: {project.name if project else 'N/A'} (ID: {project_id})" if project else ""
-    prompt = f"{user_info}\n{project_info}\nSummarize this task description concisely: {description}"
-    summary = call_gemini(prompt)
-    return {"summary": summary}
-
-@app.post("/ai/suggest_tasks", tags=["AI"])
-def ai_suggest_tasks(
-    user_id: str = Body(...),
-    project_id: str = Body(None),
-    project_description: str = Body(...),
-    db: Session = Depends(database.get_db)
-):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    project = db.query(models.Project).filter(models.Project.id == project_id).first() if project_id else None
-    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
-    project_info = f"Project: {project.name if project else 'N/A'} Description:{project.description} (ID: {project_id})" if project else ""
-    prompt = f"{user_info}\n{project_info}\nBased on this project description, suggest exactly 3 actionable tasks with clear titles. Format as a numbered list:\n\nProject: {project_description}"
-    suggestions = call_gemini(prompt)
-    return {"suggested_tasks": suggestions}
-
-@app.post("/ai/analyze_comment", tags=["AI"])
-def ai_analyze_comment(
-    user_id: str = Body(...),
-    task_id: str = Body(None),
-    comment_content: str = Body(...),
-    db: Session = Depends(database.get_db)
-):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    task = db.query(models.Task).filter(models.Task.id == task_id).first() if task_id else None
-    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
-    task_info = f"Task: {task.title if task else 'N/A'} (ID: {task_id})" if task else ""
-    prompt = f"{user_info}\n{task_info}\nAnalyze the sentiment (Positive, Negative, Neutral) and identify any action items in this comment. Provide a brief analysis.\n\nComment: {comment_content}"
-    analysis = call_gemini(prompt)
-    return {"analysis": analysis}
-
-@app.post("/ai/complex_task_assistant", tags=["AI"])
-def ai_complex_task_assistant(
-    user_id: str = Body(...),
-    project_id: str = Body(None),
-    task_id: str = Body(None),
     query: str = Body(...),
+    project_id: str = Body(None),
+    task_id: str = Body(None),
     db: Session = Depends(database.get_db)
 ):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    project = db.query(models.Project).filter(models.Project.id == project_id).first() if project_id else None
-    task = db.query(models.Task).filter(models.Task.id == task_id).first() if task_id else None
-    user_info = f"User: {user.username if user else 'Unknown'} (ID: {user_id})" if user else "User: Unknown"
-    project_info = f"Project: {project.name if project else 'N/A'} (ID: {project_id})" if project else ""
-    task_info = f"Task: {task.title if task else 'N/A'} (ID: {task_id})" if task else ""
-    prompt = (
-        f"{user_info}\n{project_info}\n{task_info}\n"
-        "You are an expert project management assistant. "
-        "Answer the following user question with actionable, clear advice. "
-        "If relevant, include best practices, permissions, time tracking, and automation tips. "
-        f"User question: {query}"
-    )
-    answer = call_gemini(prompt)
-    return {"response": answer}
+    """
+    Intelligent AI assistant that can:
+    - Analyze projects and suggest improvements
+    - Create tasks with smart defaults
+    - Update task statuses and priorities
+    - Identify bottlenecks and overdue items
+    - Provide strategic project guidance
+    """
+    result = await ai_smart_assistant(user_id, query, project_id, task_id, db)
+    return  result
+
+
+@app.post("/ai/project_insights", tags=["AI"])
+async def get_project_insights(
+    user_id: str = Body(...),
+    project_id: str = Body(...),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Get comprehensive AI-powered project insights:
+    - Overall project health
+    - Task completion trends
+    - Bottleneck identification
+    - Resource allocation suggestions
+    - Risk assessment
+    """
+    insights = await ai_project_insights(user_id, project_id, db)
+    return insights
+
+
+@app.post("/ai/optimize_task", tags=["AI"])
+async def optimize_task(
+    task_id: str = Body(...),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Deep analysis of task complexity:
+    - Complexity scoring
+    - Subtask breakdown suggestions
+    - Time estimation
+    - Risk factors
+    - Dependencies analysis
+    """
+    optimization = await ai_task_optimizer(task_id, db)
+    return  optimization
+
+
+@app.post("/ai/smart_task_creation", tags=["AI"])
+async def smart_create_tasks(
+    user_id: str = Body(...),
+    project_id: str = Body(...),
+    description: str = Body(...),
+    auto_create: bool = Body(False),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Intelligent task creation that:
+    - Analyzes project description
+    - Suggests optimal task breakdown
+    - Sets appropriate priorities and deadlines
+    - Considers dependencies
+    - Optionally auto-creates tasks
+    """    
+    print("hello")
+    result = await ai_smart_task_creation(user_id, project_id, description, db, auto_create)
+    return result
+
+
+@app.post("/ai/workflow_automation", tags=["AI"])
+async def ai_workflow_automation(
+    user_id: str = Body(...),
+    project_id: str = Body(...),
+    automation_type: str = Body(...),  # "daily_standup", "weekly_review", "deadline_alert"
+    db: Session = Depends(database.get_db)
+):
+    """
+    Automated workflow insights:
+    - Daily standup summaries
+    - Weekly progress reports
+    - Deadline and risk alerts
+    - Team productivity insights
+    """
+    automation_query = {
+        "daily_standup": "Provide a daily standup summary: what was completed yesterday, what's planned for today, and any blockers",
+        "weekly_review": "Generate a weekly project review with accomplishments, challenges, and next week's priorities",
+        "deadline_alert": "Analyze upcoming deadlines and identify any risks or items that need attention"
+    }
+    
+    query = automation_query.get(automation_type, "Provide general project automation insights")
+    result = await ai_smart_assistant(user_id, query, project_id, None, db)
+    
+    return {"automation": result, "type": automation_type}
+
+
+@app.post("/ai/team_insights", tags=["AI"])
+async def ai_team_insights(
+    user_id: str = Body(...),
+    project_id: str = Body(None),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Team performance and workload insights:
+    - Individual workload analysis
+    - Team collaboration patterns
+    - Skill gap identification
+    - Workload balancing suggestions
+    """
+    query = "Analyze team performance, workload distribution, and provide recommendations for better collaboration and task assignment"
+    result = await ai_smart_assistant(user_id, query, project_id, None, db)
+    
+    return  result
+
+
 
 # --- ROOT ENDPOINT ---
 @app.get("/", tags=["Root"])

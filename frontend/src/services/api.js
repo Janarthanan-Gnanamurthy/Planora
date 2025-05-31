@@ -36,6 +36,7 @@ export const getUsers = async (skip = 0, limit = 100) => {
   const response = await fetch(
     `${API_BASE_URL}/users?skip=${skip}&limit=${limit}`
   );
+  console.log('got users')
   return handleResponse(response);
 };
 
@@ -193,6 +194,22 @@ export const complexTaskAssistant = async (query) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query }),
+  });
+  return handleResponse(response);
+};
+
+export const smartTaskCreation = async (userId, projectId, description, autoCreate = false) => {
+  const response = await fetch(`${API_BASE_URL}/ai/smart_task_creation`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ 
+      user_id: userId, 
+      project_id: projectId, 
+      description,
+      auto_create: autoCreate
+    }),
   });
   return handleResponse(response);
 };

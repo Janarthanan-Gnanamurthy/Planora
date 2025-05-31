@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -14,7 +14,9 @@ import {
   Send,
   Loader2,
 } from "lucide-react";
-import { getUserByClerkId, getProjects, getTasks } from "../services/api";
+import { getUserByClerkId, getProjects, getTasks, getUsers } from "../services/api";
+import { smartTaskCreation } from "../services/api";
+
 
 // AI Assistant Component
 const AIAssistant = ({ isOpen, onClose }) => {
@@ -29,6 +31,12 @@ const AIAssistant = ({ isOpen, onClose }) => {
   const [tasks, setTasks] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const messagesEndRef = useRef(null);
+
+  // Track if a response has been received for the current action
+  const [hasAIResponse, setHasAIResponse] = useState(false);
+  const [showTaskCreationConfirm, setShowTaskCreationConfirm] = useState(false);
+  const [suggestedTasks, setSuggestedTasks] = useState(null);
 
   // Replace this with your actual FastAPI backend URL
   const API_BASE_URL =
@@ -36,39 +44,42 @@ const AIAssistant = ({ isOpen, onClose }) => {
 
   const quickActions = [
     {
-      id: "summarize",
+      id: "project_insights",
       icon: FileText,
-      title: "Summarize a task",
-      description: "Get a concise summary of any task description",
-      placeholder: "Enter task description to summarize...",
-      endpoint: `${API_BASE_URL}/ai/summarize_task`,
-      requestKey: "description",
+      title: "Project Insights",
+      description: "Get AI-powered insights for your project",
+      placeholder: "Select a project to get insights...",
+      endpoint: `${API_BASE_URL}/ai/project_insights`,
+      requestKey: "project_id",
+      needsProject: true,
     },
     {
-      id: "suggest",
+      id: "suggest_tasks",
       icon: Plus,
-      title: "Suggest tasks for project",
-      description: "Get AI-generated task suggestions based on your project",
-      placeholder: "Describe your project to get task suggestions...",
-      endpoint: `${API_BASE_URL}/ai/suggest_tasks`,
-      requestKey: "project_description",
+      title: "Create Tasks",
+      description: "Get AI-generated task suggestions and create them",
+      placeholder: "Describe what tasks you need...",
+      endpoint: `${API_BASE_URL}/ai/smart_task_creation`,
+      requestKey: "description",
+      needsProject: true,
     },
     {
-      id: "analyze",
+      id: "analyze_task",
       icon: Search,
-      title: "Analyze comment tone",
-      description: "Understand the sentiment and tone of comments",
-      placeholder: "Enter comment to analyze...",
-      endpoint: `${API_BASE_URL}/ai/analyze_comment`,
-      requestKey: "comment_content",
+      title: "Analyze Task",
+      description: "Analyze a task for complexity and suggestions",
+      placeholder: "Select a task to analyze...",
+      endpoint: `${API_BASE_URL}/ai/optimize_task`,
+      requestKey: "task_id",
+      needsTask: true,
     },
     {
       id: "assistant",
       icon: Sparkles,
-      title: "Complex task assistant",
-      description: "Get help with complex task-related queries",
-      placeholder: "Ask me anything about your tasks...",
-      endpoint: `${API_BASE_URL}/ai/complex_task_assistant`,
+      title: "Smart Assistant",
+      description: "Ask anything about your projects or tasks",
+      placeholder: "Ask me anything...",
+      endpoint: `${API_BASE_URL}/ai/smart_assistant`,
       requestKey: "query",
     },
   ];
@@ -77,8 +88,25 @@ const AIAssistant = ({ isOpen, onClose }) => {
     const fetchBackendUserId = async () => {
       if (user && user.id) {
         try {
-          const dbUser = await getUserByClerkId(user.id);
+          console.log(user.id)
+          const usersList = await getUsers();
+          const projectsList = await getProjects();
+          const dbUser = usersList.find((u) => u.clerkId === user.id);
+          console.log("ewsrdtfvygbhunjmk", dbUser)
+          const userProjects = projectsList.filter((project) => {
+            // Ensure collaborators exists and is an array
+            if (!project.collaborators || !Array.isArray(project.collaborators)) {
+              return false;
+            }
+            // Check if user's database ID is in the collaborators array
+            return project.collaborators.includes(dbUser.id);
+          });
+  
+          console.log("Filtered user projects:", userProjects);
+          setProjects(userProjects);
+        
           setBackendUserId(dbUser?.id || null);
+   
         } catch (err) {
           setBackendUserId(null);
         }
@@ -87,21 +115,21 @@ const AIAssistant = ({ isOpen, onClose }) => {
     fetchBackendUserId();
   }, [user]);
 
-  useEffect(() => {
-    const fetchUserProjects = async () => {
-      if (isOpen && backendUserId) {
-        try {
-          const allProjects = await getProjects();
-          // Filter projects where user is a collaborator
-          const userProjects = allProjects.filter(p => p.collaborators?.includes(backendUserId));
-          setProjects(userProjects);
-        } catch (err) {
-          setProjects([]);
-        }
-      }
-    };
-    fetchUserProjects();
-  }, [isOpen, backendUserId]);
+  // useEffect(() => {
+  //   const fetchUserProjects = async () => {
+  //     if (isOpen && backendUserId) {
+  //       try {
+  //         const allProjects = await getProjects();
+  //         // Filter projects where user is a collaborator
+  //         const userProjects = allProjects.filter(p => p.collaborators?.includes(backendUserId));
+  //         setProjects(userProjects);
+  //       } catch (err) {
+  //         setProjects([]);
+  //       }
+  //     }
+  //   };
+  //   fetchUserProjects();
+  // }, [isOpen, backendUserId]);
 
   useEffect(() => {
     const fetchProjectTasks = async () => {
@@ -137,99 +165,160 @@ const AIAssistant = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isOpen, isLoading]);
+
+  // Reset hasAIResponse when action changes or modal closes
+  useEffect(() => {
+    setHasAIResponse(false);
+  }, [selectedAction, isOpen]);
+
+  // Set hasAIResponse to true when an AI message is added
+  useEffect(() => {
+    if (selectedAction && messages.some(m => m.type === "ai")) {
+      setHasAIResponse(true);
+    }
+  }, [messages, selectedAction]);
+
   const handleActionSelect = (action) => {
     setSelectedAction(action);
     setInput("");
     setMessages([]);
   };
 
+  const handleCreateTasks = async (suggestedTasks) => {
+    if (!selectedProjectId || !backendUserId) return;
+    
+    setIsLoading(true);
+    try {
+      const result = await smartTaskCreation(backendUserId, selectedProjectId, input, true);
+      const message = { 
+        type: "ai", 
+        content: "✅ Tasks have been created successfully! You can view them in your project board." 
+      };
+      setMessages(prev => [...prev, message]);
+      setSuggestedTasks(null);
+      setShowTaskCreationConfirm(false);
+    } catch (error) {
+      const errorMessage = {
+        type: "error",
+        content: `Error: Failed to create tasks. ${error.message}`,
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!input.trim() || !selectedAction || isLoading) return;
+    if (!input.trim() && !(selectedAction && (selectedAction.needsProject || selectedAction.needsTask))) return;
+    if (!selectedAction || isLoading) return;
     if (!backendUserId) {
       setMessages((prev) => [...prev, { type: "error", content: "User not found in backend. Please refresh or try again later." }]);
       return;
     }
-    const userMessage = { type: "user", content: input };
+    // Validation for project/task selection
+    if (selectedAction.needsProject && !selectedProjectId) {
+      setMessages((prev) => [...prev, { type: "error", content: "Please select a project." }]);
+      return;
+    }
+    if (selectedAction.needsTask && !selectedTaskId) {
+      setMessages((prev) => [...prev, { type: "error", content: "Please select a task." }]);
+      return;
+    }
+
+    // Show user message
+    let userMessage;
+    if (selectedAction.requestKey === "description" || selectedAction.requestKey === "query") {
+      userMessage = { type: "user", content: input };
+    } else if (selectedAction.requestKey === "project_id") {
+      const project = projects.find(p => p.id === selectedProjectId);
+      userMessage = { type: "user", content: `Project: ${project ? project.name : selectedProjectId}` };
+    } else if (selectedAction.requestKey === "task_id") {
+      const task = tasks.find(t => t.id === selectedTaskId);
+      userMessage = { type: "user", content: `Task: ${task ? task.title : selectedTaskId}` };
+    }
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+
     try {
-      const payload = {
-        user_id: backendUserId,
-        project_id: selectedProjectId || null,
-        task_id: selectedTaskId || null,
-        [selectedAction.requestKey]: input,
-      };
-      const response = await fetch(selectedAction.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      console.log("Response status:", response.status);
-      console.log("Response ok:", response.ok);
-
-      if (!response.ok) {
-        // Try to get error message from response
-        let errorMessage = `HTTP ${response.status}`;
-        try {
-          const errorText = await response.text();
-          errorMessage = errorText || errorMessage;
-        } catch (e) {
-          console.error("Error reading error response:", e);
-        }
-        throw new Error(`API Error: ${errorMessage}`);
-      }
-
-      // Try to parse as JSON first, then fall back to text
-      let result;
-      const contentType = response.headers.get("content-type");
-
-      if (contentType && contentType.includes("application/json")) {
-        const jsonResult = await response.json();
-        console.log("JSON Response:", jsonResult);
-
-        // Handle different possible JSON response formats for your FastAPI backend
-        if (typeof jsonResult === "string") {
-          result = jsonResult;
-        } else if (jsonResult.summary) {
-          // For summarize task endpoint
-          result = jsonResult.summary;
-        } else if (jsonResult.suggestions) {
-          // For suggest tasks endpoint
-          result = Array.isArray(jsonResult.suggestions)
-            ? jsonResult.suggestions.join("\n• ")
-            : jsonResult.suggestions;
-        } else if (jsonResult.analysis) {
-          // For analyze comment endpoint
-          result = jsonResult.analysis;
-        } else if (jsonResult.response) {
-          // For complex assistant endpoint
-          result = jsonResult.response;
-        } else if (jsonResult.message) {
-          result = jsonResult.message;
-        } else if (jsonResult.result) {
-          result = jsonResult.result;
-        } else if (jsonResult.data) {
-          result = jsonResult.data;
+      // Special handling for task suggestions/creation
+      if (selectedAction.id === "suggest_tasks") {
+        const result = await smartTaskCreation(backendUserId, selectedProjectId, input, false);
+        if (result.suggested_tasks) {
+          setSuggestedTasks(result.suggested_tasks);
+          setShowTaskCreationConfirm(true);
+          const message = {
+            type: "ai",
+            content: `I can help you create the following tasks:\n\n${result.suggested_tasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n')}\n\nWould you like me to create these tasks for you?`
+          };
+          setMessages(prev => [...prev, message]);
         } else {
-          // If none of the expected keys are found, stringify the whole response
-          result = JSON.stringify(jsonResult, null, 2);
+          const message = {
+            type: "ai",
+            content: result.response || "I couldn't generate any task suggestions. Please try rephrasing your request."
+          };
+          setMessages(prev => [...prev, message]);
         }
       } else {
-        result = await response.text();
-        console.log("Text Response:", result);
+        let payload = { user_id: backendUserId };
+        if (selectedProjectId) payload.project_id = selectedProjectId;
+        if (selectedTaskId) payload.task_id = selectedTaskId;
+        if (selectedAction.requestKey === "description") payload.description = input;
+        if (selectedAction.requestKey === "query") payload.query = input;
+        if (selectedAction.requestKey === "project_id") payload.project_id = selectedProjectId;
+        if (selectedAction.requestKey === "task_id") payload.task_id = selectedTaskId;
+        // For smart_task_creation, add auto_create: false
+        if (selectedAction.id === "suggest_tasks") payload.auto_create = false;
+        const response = await fetch(selectedAction.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          let errorMessage = `HTTP ${response.status}`;
+          try {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          } catch (e) {}
+          throw new Error(`API Error: ${errorMessage}`);
+        }
+        let result;
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const jsonResult = await response.json();
+          // Parse according to backend structure
+          if (jsonResult.response) {
+            result = jsonResult.response;
+          } else if (jsonResult.analysis) {
+            result = typeof jsonResult.analysis === "string" ? jsonResult.analysis : JSON.stringify(jsonResult.analysis, null, 2);
+          } else if (jsonResult.suggested_tasks) {
+            result = Array.isArray(jsonResult.suggested_tasks)
+              ? jsonResult.suggested_tasks.map((t, i) => `${i + 1}. ${t.title || JSON.stringify(t)}`).join("\n")
+              : JSON.stringify(jsonResult.suggested_tasks, null, 2);
+          } else if (jsonResult.automation) {
+            result = jsonResult.automation;
+          } else if (jsonResult.result) {
+            result = typeof jsonResult.result === "string" ? jsonResult.result : JSON.stringify(jsonResult.result, null, 2);
+          } else if (jsonResult.context) {
+            result = jsonResult.context;
+          } else {
+            result = JSON.stringify(jsonResult, null, 2);
+          }
+        } else {
+          result = await response.text();
+        }
+        if (!result || result.trim() === "") {
+          throw new Error("Empty response from AI service");
+        }
+        const aiMessage = { type: "ai", content: result };
+        setMessages((prev) => [...prev, aiMessage]);
       }
-
-      if (!result || result.trim() === "") {
-        throw new Error("Empty response from AI service");
-      }
-
-      const aiMessage = { type: "ai", content: result };
-      setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
-      console.error("AI Assistant Error:", error);
       const errorMessage = {
         type: "error",
         content: `Error: ${error.message}. Please check the console for more details.`,
@@ -260,86 +349,58 @@ const AIAssistant = ({ isOpen, onClose }) => {
       setMessages([{ type: "error", content: "User not found in backend. Please refresh or try again later." }]);
       return;
     }
-    const complexAction = quickActions[3];
-    setSelectedAction(complexAction);
+    const smartAssistantAction = quickActions.find(a => a.id === "assistant");
+    setSelectedAction(smartAssistantAction);
     const userMessage = { type: "user", content: input };
     setMessages([userMessage]);
     setIsLoading(true);
     try {
-      const payload = {
-        user_id: backendUserId,
-        project_id: selectedProjectId || null,
-        task_id: selectedTaskId || null,
-        [complexAction.requestKey]: input,
-      };
-      const response = await fetch(complexAction.endpoint, {
+      let payload = { user_id: backendUserId, query: input };
+      if (selectedProjectId) payload.project_id = selectedProjectId;
+      if (selectedTaskId) payload.task_id = selectedTaskId;
+      const response = await fetch(smartAssistantAction.endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}`;
         try {
           const errorText = await response.text();
           errorMessage = errorText || errorMessage;
-        } catch (e) {
-          console.error("Error reading error response:", e);
-        }
+        } catch (e) {}
         throw new Error(`API Error: ${errorMessage}`);
       }
-
       let result;
       const contentType = response.headers.get("content-type");
-
       if (contentType && contentType.includes("application/json")) {
         const jsonResult = await response.json();
-        console.log("JSON Response:", jsonResult);
-
-        // Handle different possible JSON response formats for your FastAPI backend
-        if (typeof jsonResult === "string") {
-          result = jsonResult;
-        } else if (jsonResult.summary) {
-          // For summarize task endpoint
-          result = jsonResult.summary;
-        } else if (jsonResult.suggested_tasks) {
-          // For suggest tasks endpoint
-          result = Array.isArray(jsonResult.suggested_tasks)
-            ? jsonResult.suggested_tasks.join("\n• ")
-            : jsonResult.suggested_tasks;
-        } else if (jsonResult.analysis) {
-          // For analyze comment endpoint
-          result = jsonResult.analysis;
-        } else if (jsonResult.response) {
-          // For complex assistant endpoint
+        if (jsonResult.response) {
           result = jsonResult.response;
-        } else if (jsonResult.message) {
-          result = jsonResult.message;
+        } else if (jsonResult.analysis) {
+          result = typeof jsonResult.analysis === "string" ? jsonResult.analysis : JSON.stringify(jsonResult.analysis, null, 2);
+        } else if (jsonResult.suggested_tasks) {
+          result = Array.isArray(jsonResult.suggested_tasks)
+            ? jsonResult.suggested_tasks.map((t, i) => `${i + 1}. ${t.title || JSON.stringify(t)}`).join("\n")
+            : JSON.stringify(jsonResult.suggested_tasks, null, 2);
+        } else if (jsonResult.automation) {
+          result = jsonResult.automation;
         } else if (jsonResult.result) {
-          result = jsonResult.result;
-        } else if (jsonResult.data) {
-          result = jsonResult.data;
+          result = typeof jsonResult.result === "string" ? jsonResult.result : JSON.stringify(jsonResult.result, null, 2);
+        } else if (jsonResult.context) {
+          result = jsonResult.context;
         } else {
-          // If none of the expected keys are found, stringify the whole response
           result = JSON.stringify(jsonResult, null, 2);
         }
       } else {
         result = await response.text();
-        console.log("Text Response:", result);
       }
-
       if (!result || result.trim() === "") {
         throw new Error("Empty response from AI service");
       }
-
       const aiMessage = { type: "ai", content: result };
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
-      console.error("AI Assistant Error:", error);
       const errorMessage = {
         type: "error",
         content: `Error: ${error.message}. Please check the console for more details.`,
@@ -433,39 +494,41 @@ const AIAssistant = ({ isOpen, onClose }) => {
               /* Chat Interface */
               <div className="flex flex-col h-full">
                 {/* Project/Task Dropdowns */}
-                <div className="p-4 pb-0 flex flex-col gap-2">
-                  <label className="text-xs text-gray-400 mb-1">Project</label>
-                  <select
-                    className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={selectedProjectId}
-                    onChange={e => setSelectedProjectId(e.target.value)}
-                  >
-                    <option value="">Select a project (optional)</option>
-                    {projects.map(project => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedProjectId && (
-                    <>
-                      <label className="text-xs text-gray-400 mb-1 mt-2">Task</label>
-                      <select
-                        className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={selectedTaskId}
-                        onChange={e => setSelectedTaskId(e.target.value)}
-                      >
-                        <option value="">Select a task (optional)</option>
-                        {tasks.map(task => (
-                          <option key={task.id} value={task.id}>
-                            {task.title}
-                          </option>
-                        ))}
-                      </select>
-                    </>
-                  )}
-                </div>
-                <div className="flex-1 p-4 overflow-y-auto space-y-4 min-h-[200px]">
+                {!hasAIResponse && (
+                  <div className="p-4 pb-0 flex flex-col gap-2">
+                    <label className="text-xs text-gray-400 mb-1">Project</label>
+                    <select
+                      className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={selectedProjectId}
+                      onChange={e => setSelectedProjectId(e.target.value)}
+                    >
+                      <option value="">Select a project (optional)</option>
+                      {projects.map(project => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedProjectId && (
+                      <>
+                        <label className="text-xs text-gray-400 mb-1 mt-2">Task</label>
+                        <select
+                          className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={selectedTaskId}
+                          onChange={e => setSelectedTaskId(e.target.value)}
+                        >
+                          <option value="">Select a task (optional)</option>
+                          {tasks.map(task => (
+                            <option key={task.id} value={task.id}>
+                              {task.title}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+                  </div>
+                )}
+                <div className="flex-1 p-4 overflow-y-auto space-y-4 min-h-[200px]" style={{ maxHeight: 320 }}>
                   {messages.length === 0 && (
                     <div className="text-gray-400 text-center py-8">
                       {selectedAction.description}
@@ -501,6 +564,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
                       </div>
                     </div>
                   )}
+                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Input Area */}

@@ -4,6 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { Plus, Users, Calendar, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createProject, getProjects, getUsers } from "../../services/api";
+import { useToast } from "../../components/Toast";
 
 export default function ProjectPage() {
   const { user } = useUser();
@@ -14,6 +15,7 @@ export default function ProjectPage() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const {addToast}=useToast()
 
   useEffect(() => {
     const fetchData = async () => {
