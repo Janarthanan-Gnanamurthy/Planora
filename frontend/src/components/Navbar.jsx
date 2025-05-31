@@ -273,7 +273,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
         if (selectedAction.requestKey === "project_id") payload.project_id = selectedProjectId;
         if (selectedAction.requestKey === "task_id") payload.task_id = selectedTaskId;
         // For smart_task_creation, add auto_create: false
-        if (selectedAction.id === "suggest_tasks") payload.auto_create = false;
+        if (selectedAction.id === "suggest_tasks") payload.auto_create = true;
         const response = await fetch(selectedAction.endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

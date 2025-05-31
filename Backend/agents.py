@@ -1,5 +1,3 @@
-# Fixed agents.py - Key sections that need to be updated
-
 import os
 import re
 import json
@@ -12,7 +10,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
-import json
 import uuid
 from database import get_db
 import models
@@ -36,8 +33,7 @@ class DatabaseTools:
     def __init__(self, db: Session):
         self.db = db
     
-    @tool
-    def get_user_projects(self, user_id: str) -> List[Dict]:
+    def get_user_projects_func(self, user_id: str) -> List[Dict]:
         """Get all projects for a user"""
         user = self.db.query(models.User).filter(models.User.id == user_id).first()
         if not user:
@@ -54,8 +50,7 @@ class DatabaseTools:
             })
         return projects
     
-    @tool
-    def get_project_tasks(self, project_id: str, status: Optional[str] = None) -> List[Dict]:
+    def get_project_tasks_func(self, project_id: str, status: Optional[str] = None) -> List[Dict]:
         """Get tasks for a project, optionally filtered by status"""
         project = self.db.query(models.Project).filter(models.Project.id == project_id).first()
         if not project:
@@ -80,12 +75,10 @@ class DatabaseTools:
             })
         return task_list
     
-    @tool
-    def create_task(self, project_id: str, title: str, description: str = "", 
-                   priority: str = "medium", assigned_to_id: Optional[str] = None,
-                   deadline_days: int = 7) -> Dict:
+    def create_task_func(self, project_id: str, title: str, description: str = "", 
+                        priority: str = "medium", assigned_to_id: Optional[str] = None,
+                        deadline_days: int = 7) -> Dict:
         """Create a new task"""
-        print("inside create task")
         try:
             task_id = str(uuid.uuid4())
             deadline = datetime.now() + timedelta(days=deadline_days)
@@ -105,7 +98,7 @@ class DatabaseTools:
             self.db.add(new_task)
             self.db.commit()
             self.db.refresh(new_task)
-            print(f"Created task: {new_task.id} in project {project_id}")
+            
             return {
                 "id": new_task.id,
                 "title": new_task.title,
@@ -121,25 +114,27 @@ class DatabaseTools:
                 "status": "failed"
             }
     
-    @tool
-    def update_task_status(self, task_id: str, status: str) -> Dict:
+    def update_task_status_func(self, task_id: str, status: str) -> Dict:
         """Update task status"""
         task = self.db.query(models.Task).filter(models.Task.id == task_id).first()
         if not task:
             return {"error": "Task not found"}
         
-        task.status = status
-        self.db.commit()
-        
-        return {
-            "task_id": task_id,
-            "title": task.title,
-            "new_status": status,
-            "updated": True
-        }
+        try:
+            task.status = status
+            self.db.commit()
+            
+            return {
+                "task_id": task_id,
+                "title": task.title,
+                "new_status": status,
+                "updated": True
+            }
+        except Exception as e:
+            self.db.rollback()
+            return {"error": f"Failed to update task: {str(e)}"}
     
-    @tool
-    def get_overdue_tasks(self, user_id: str) -> List[Dict]:
+    def get_overdue_tasks_func(self, user_id: str) -> List[Dict]:
         """Get all overdue tasks for a user's projects"""
         user = self.db.query(models.User).filter(models.User.id == user_id).first()
         if not user:
@@ -160,6 +155,49 @@ class DatabaseTools:
         
         return sorted(overdue_tasks, key=lambda x: x["days_overdue"], reverse=True)
 
+    # Create tool wrappers
+    @property
+    def get_user_projects(self):
+        @tool
+        def get_user_projects(user_id: str) -> List[Dict]:
+            """Get all projects for a user"""
+            return self.get_user_projects_func(user_id)
+        return get_user_projects
+    
+    @property
+    def get_project_tasks(self):
+        @tool
+        def get_project_tasks(project_id: str, status: Optional[str] = None) -> List[Dict]:
+            """Get tasks for a project, optionally filtered by status"""
+            return self.get_project_tasks_func(project_id, status)
+        return get_project_tasks
+    
+    @property
+    def create_task(self):
+        @tool
+        def create_task(project_id: str, title: str, description: str = "", 
+                       priority: str = "medium", assigned_to_id: Optional[str] = None,
+                       deadline_days: int = 7) -> Dict:
+            """Create a new task"""
+            return self.create_task_func(project_id, title, description, priority, assigned_to_id, deadline_days)
+        return create_task
+    
+    @property
+    def update_task_status(self):
+        @tool
+        def update_task_status(task_id: str, status: str) -> Dict:
+            """Update task status"""
+            return self.update_task_status_func(task_id, status)
+        return update_task_status
+    
+    @property
+    def get_overdue_tasks(self):
+        @tool
+        def get_overdue_tasks(user_id: str) -> List[Dict]:
+            """Get all overdue tasks for a user's projects"""
+            return self.get_overdue_tasks_func(user_id)
+        return get_overdue_tasks
+
 
 class TaskAnalysisAgent:
     """Specialized agent for deep task analysis and optimization"""
@@ -167,7 +205,7 @@ class TaskAnalysisAgent:
     def __init__(self, db: Session):
         self.db = db
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash-preview-05-20",
+            model="gemini-2.0-flash-exp",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.2
         )
@@ -198,12 +236,14 @@ class TaskAnalysisAgent:
         Format as JSON.
         """
         
-        response = self.llm.invoke([HumanMessage(content=prompt)])
         try:
+            response = self.llm.invoke([HumanMessage(content=prompt)])
             analysis = json.loads(response.content)
             return analysis
-        except:
+        except json.JSONDecodeError:
             return {"analysis": response.content}
+        except Exception as e:
+            return {"error": f"Analysis failed: {str(e)}"}
     
     def suggest_task_breakdown(self, project_description: str, context: Dict) -> List[Dict]:
         """Intelligently suggest task breakdown for a project"""
@@ -239,6 +279,11 @@ class TaskAnalysisAgent:
             response = self.llm.invoke([HumanMessage(content=prompt)])
             response_text = response.content.strip()
             
+            # Remove markdown code blocks if present
+            if response_text.startswith('```'):
+                response_text = re.sub(r'^```[^\n]*\n', '', response_text)
+                response_text = re.sub(r'\n```$', '', response_text)
+            
             # Try to extract JSON from the response
             json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
             if json_match:
@@ -249,38 +294,47 @@ class TaskAnalysisAgent:
                 validated_tasks = []
                 for task in tasks:
                     if isinstance(task, dict) and "title" in task:
+                        # Ensure priority is valid
+                        priority = task.get("priority", "medium").lower()
+                        if priority not in ["high", "medium", "low"]:
+                            priority = "medium"
+                        
+                        # Ensure estimated_days is within valid range
+                        estimated_days = task.get("estimated_days", 7)
+                        try:
+                            estimated_days = int(estimated_days)
+                            estimated_days = min(max(estimated_days, 1), 14)
+                        except (ValueError, TypeError):
+                            estimated_days = 7
+                        
                         validated_task = {
                             "title": task.get("title", "Untitled Task"),
                             "description": task.get("description", ""),
-                            "priority": task.get("priority", "medium").lower(),
-                            "estimated_days": min(max(int(task.get("estimated_days", 7)), 1), 14),
-                            "dependencies": task.get("dependencies", []),
-                            "skills_required": task.get("skills_required", [])
+                            "priority": priority,
+                            "estimated_days": estimated_days,
+                            "dependencies": task.get("dependencies", []) if isinstance(task.get("dependencies", []), list) else [],
+                            "skills_required": task.get("skills_required", []) if isinstance(task.get("skills_required", []), list) else []
                         }
                         validated_tasks.append(validated_task)
                 
-                return validated_tasks if validated_tasks else []
+                return validated_tasks if validated_tasks else self._create_fallback_task(project_description)
             else:
-                # Fallback: create a simple task from the description
-                return [{
-                    "title": f"Task: {project_description[:50]}...",
-                    "description": project_description,
-                    "priority": "medium",
-                    "estimated_days": 7,
-                    "dependencies": [],
-                    "skills_required": []
-                }]
+                return self._create_fallback_task(project_description)
                 
         except Exception as e:
             print(f"Error in suggest_task_breakdown: {str(e)}")
-            return [{
-                "title": f"Task: {project_description[:50]}...",
-                "description": f"Auto-generated from: {project_description}",
-                "priority": "medium",
-                "estimated_days": 7,
-                "dependencies": [],
-                "skills_required": []
-            }]
+            return self._create_fallback_task(project_description)
+    
+    def _create_fallback_task(self, description: str) -> List[Dict]:
+        """Create a fallback task when AI generation fails"""
+        return [{
+            "title": f"Task: {description[:50]}..." if len(description) > 50 else description,
+            "description": f"Auto-generated from: {description}",
+            "priority": "medium",
+            "estimated_days": 7,
+            "dependencies": [],
+            "skills_required": []
+        }]
 
 
 class ProjectManagerAgent:
@@ -290,12 +344,12 @@ class ProjectManagerAgent:
         self.db = db
         self.db_tools = DatabaseTools(db)
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash-preview-05-20",
+            model="gemini-2.0-flash-exp",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
         
-        # Bind tools to LLM
+        # Get tools as properties
         self.tools = [
             self.db_tools.get_user_projects,
             self.db_tools.get_project_tasks,
@@ -357,10 +411,15 @@ class ProjectManagerAgent:
             full_messages = [SystemMessage(content=system_prompt)] + messages
             
             # Get AI response with tool calls
-            response = self.llm_with_tools.invoke(full_messages)
-            
-            state["messages"].append(response)
-            state["action_taken"] = bool(response.tool_calls)
+            try:
+                response = self.llm_with_tools.invoke(full_messages)
+                state["messages"].append(response)
+                state["action_taken"] = bool(hasattr(response, 'tool_calls') and response.tool_calls)
+            except Exception as e:
+                # Fallback response if tool binding fails
+                error_response = AIMessage(content=f"I encountered an error: {str(e)}. Let me help you with basic information instead.")
+                state["messages"].append(error_response)
+                state["action_taken"] = False
             
             return state
         
@@ -369,9 +428,13 @@ class ProjectManagerAgent:
             last_message = state["messages"][-1]
             
             if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
-                tool_node = ToolNode(self.tools)
-                tool_results = tool_node.invoke({"messages": [last_message]})
-                state["messages"].extend(tool_results["messages"])
+                try:
+                    tool_node = ToolNode(self.tools)
+                    tool_results = tool_node.invoke({"messages": [last_message]})
+                    state["messages"].extend(tool_results["messages"])
+                except Exception as e:
+                    error_message = AIMessage(content=f"Tool execution failed: {str(e)}")
+                    state["messages"].append(error_message)
             
             return state
         
@@ -379,10 +442,14 @@ class ProjectManagerAgent:
             """Generate final response with insights and recommendations"""
             if state["action_taken"]:
                 # Generate follow-up response considering tool results
-                response = self.llm.invoke(state["messages"] + [
-                    SystemMessage(content="Provide a clear summary of what was accomplished and any recommendations.")
-                ])
-                state["messages"].append(response)
+                try:
+                    response = self.llm.invoke(state["messages"] + [
+                        SystemMessage(content="Provide a clear summary of what was accomplished and any recommendations.")
+                    ])
+                    state["messages"].append(response)
+                except Exception as e:
+                    fallback_response = AIMessage(content="I've completed the requested actions. Please let me know if you need any clarification.")
+                    state["messages"].append(fallback_response)
             
             # Extract final result
             final_response = state["messages"][-1].content
@@ -411,8 +478,12 @@ class ProjectManagerAgent:
         workflow.add_edge("finalize", END)
         
         # Compile with memory
-        memory = MemorySaver()
-        return workflow.compile(checkpointer=memory)
+        try:
+            memory = MemorySaver()
+            return workflow.compile(checkpointer=memory)
+        except Exception as e:
+            print(f"Warning: Could not compile workflow with memory: {e}")
+            return workflow.compile()
     
     def _classify_request(self, message: str) -> str:
         """Classify the type of request"""
@@ -438,13 +509,13 @@ class SmartProjectManager:
     
     def get_agent(self, agent_type: str, db: Session):
         """Get or create agent instance"""
-        if agent_type not in self.agents:
-            if agent_type == "project_manager":
-                self.agents[agent_type] = ProjectManagerAgent(db)
-            elif agent_type == "task_analyzer":
-                self.agents[agent_type] = TaskAnalysisAgent(db)
-        
-        return self.agents[agent_type]
+        # Create new agent for each request to avoid database session issues
+        if agent_type == "project_manager":
+            return ProjectManagerAgent(db)
+        elif agent_type == "task_analyzer":
+            return TaskAnalysisAgent(db)
+        else:
+            raise ValueError(f"Unknown agent type: {agent_type}")
     
     async def process_request(self, 
                             user_id: str,
@@ -454,35 +525,44 @@ class SmartProjectManager:
                             db: Session = None) -> Dict:
         """Process any AI request intelligently"""
         
-        # Determine which agent to use
-        query_lower = query.lower()
-        
-        if any(word in query_lower for word in ["analyze", "complexity", "breakdown", "estimate"]):
-            if task_id:
-                agent = self.get_agent("task_analyzer", db)
-                return agent.analyze_task_complexity(task_id)
-            else:
-                agent = self.get_agent("task_analyzer", db)
-                return {"suggested_tasks": agent.suggest_task_breakdown(query, {"user_id": user_id})}
-        
-        # Use project manager agent for most requests
-        agent = self.get_agent("project_manager", db)
-        
-        initial_state = AgentState(
-            messages=[HumanMessage(content=query)],
-            user_id=user_id,
-            project_id=project_id,
-            task_id=task_id,
-            context={},
-            action_taken=False,
-            result={}
-        )
-        
-        # Run the agent workflow
-        config = {"configurable": {"thread_id": f"{user_id}_{project_id or 'general'}"}}
-        final_state = agent.graph.invoke(initial_state, config)
-        
-        return final_state["result"]
+        try:
+            # Determine which agent to use
+            query_lower = query.lower()
+            
+            if any(word in query_lower for word in ["analyze", "complexity", "breakdown", "estimate"]):
+                if task_id:
+                    agent = self.get_agent("task_analyzer", db)
+                    return agent.analyze_task_complexity(task_id)
+                else:
+                    agent = self.get_agent("task_analyzer", db)
+                    return {"suggested_tasks": agent.suggest_task_breakdown(query, {"user_id": user_id})}
+            
+            # Use project manager agent for most requests
+            agent = self.get_agent("project_manager", db)
+            
+            initial_state = AgentState(
+                messages=[HumanMessage(content=query)],
+                user_id=user_id,
+                project_id=project_id,
+                task_id=task_id,
+                context={},
+                action_taken=False,
+                result={}
+            )
+            
+            # Run the agent workflow
+            config = {"configurable": {"thread_id": f"{user_id}_{project_id or 'general'}"}}
+            final_state = agent.graph.invoke(initial_state, config)
+            
+            return final_state["result"]
+            
+        except Exception as e:
+            print(f"Error in process_request: {str(e)}")
+            return {
+                "error": "Failed to process request",
+                "details": str(e),
+                "response": "I encountered an error while processing your request. Please try again or rephrase your question."
+            }
 
 
 # Global instance
@@ -509,7 +589,7 @@ async def ai_task_optimizer(task_id: str, db: Session):
 
 
 async def ai_smart_task_creation(user_id: str, project_id: str, description: str, 
-                               db: Session, auto_create: bool = False):
+                               db: Session, auto_create: bool = True):
     """Intelligently create tasks with AI suggestions"""
     try:
         # Get task suggestions from AI
@@ -533,7 +613,6 @@ async def ai_smart_task_creation(user_id: str, project_id: str, description: str
             db_tools = DatabaseTools(db)
             
             for task_data in suggested_tasks:
-                print(task_data)  # Debugging output
                 try:
                     # Ensure we have required fields
                     title = task_data.get("title", "Untitled Task")
@@ -541,9 +620,7 @@ async def ai_smart_task_creation(user_id: str, project_id: str, description: str
                     priority = task_data.get("priority", "medium")
                     deadline_days = task_data.get("estimated_days", 7)
                     
-                    print("before")  # Debugging output
-
-                   # Create task directly using database operations (not using @tool decorator)
+                    # Create task directly using database operations
                     task_id = str(uuid.uuid4())
                     deadline = datetime.now() + timedelta(days=deadline_days)
                     
@@ -575,6 +652,7 @@ async def ai_smart_task_creation(user_id: str, project_id: str, description: str
                     created_tasks.append(created_task)
                         
                 except Exception as e:
+                    db.rollback()
                     creation_errors.append({
                         "task": task_data.get("title", "Unknown"),
                         "error": str(e)
