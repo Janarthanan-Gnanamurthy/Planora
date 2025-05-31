@@ -198,18 +198,30 @@ export const complexTaskAssistant = async (query) => {
   return handleResponse(response);
 };
 
+
+
+// Add this function to your API utilities file (where getTasks, getProjects are defined)
+
 export const smartTaskCreation = async (userId, projectId, description, autoCreate = false) => {
-  const response = await fetch(`${API_BASE_URL}/ai/smart_task_creation`, {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  
+  const response = await fetch(`${API_BASE_URL}/ai/smart-task-creation`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ 
-      user_id: userId, 
-      project_id: projectId, 
-      description,
+    body: JSON.stringify({
+      user_id: userId,
+      project_id: projectId,
+      description: description,
       auto_create: autoCreate
     }),
   });
-  return handleResponse(response);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json();
 };

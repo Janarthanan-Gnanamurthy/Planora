@@ -17,8 +17,6 @@ export default function ProjectPage() {
   const [isLoading, setIsLoading] = useState(true);
   const {addToast}=useToast()
 
-  const { addToast } = useToast();
-
   useEffect(() => {
     const fetchData = async () => {
       try {

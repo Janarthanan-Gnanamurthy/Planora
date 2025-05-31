@@ -32,16 +32,17 @@ const AIAssistant = ({ isOpen, onClose }) => {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const messagesEndRef = useRef(null);
-
-  // Track if a response has been received for the current action
   const [hasAIResponse, setHasAIResponse] = useState(false);
   const [showTaskCreationConfirm, setShowTaskCreationConfirm] = useState(false);
   const [suggestedTasks, setSuggestedTasks] = useState(null);
+
+
 
   // Replace this with your actual FastAPI backend URL
   const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
+ 
   const quickActions = [
     {
       id: "project_insights",
@@ -49,7 +50,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
       title: "Project Insights",
       description: "Get AI-powered insights for your project",
       placeholder: "Select a project to get insights...",
-      endpoint: `${API_BASE_URL}/ai/project_insights`,
+      endpoint: `${API_BASE_URL}/ai/project-insights`, // Updated endpoint
       requestKey: "project_id",
       needsProject: true,
     },
@@ -59,7 +60,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
       title: "Create Tasks",
       description: "Get AI-generated task suggestions and create them",
       placeholder: "Describe what tasks you need...",
-      endpoint: `${API_BASE_URL}/ai/smart_task_creation`,
+      endpoint: `${API_BASE_URL}/ai/smart-task-creation`, // Updated endpoint
       requestKey: "description",
       needsProject: true,
     },
@@ -69,7 +70,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
       title: "Analyze Task",
       description: "Analyze a task for complexity and suggestions",
       placeholder: "Select a task to analyze...",
-      endpoint: `${API_BASE_URL}/ai/optimize_task`,
+      endpoint: `${API_BASE_URL}/ai/task-optimizer`, // Updated endpoint
       requestKey: "task_id",
       needsTask: true,
     },
@@ -79,10 +80,11 @@ const AIAssistant = ({ isOpen, onClose }) => {
       title: "Smart Assistant",
       description: "Ask anything about your projects or tasks",
       placeholder: "Ask me anything...",
-      endpoint: `${API_BASE_URL}/ai/smart_assistant`,
+      endpoint: `${API_BASE_URL}/ai/smart-assistant`, // Updated endpoint
       requestKey: "query",
     },
   ];
+
 
   useEffect(() => {
     const fetchBackendUserId = async () => {
@@ -115,21 +117,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
     fetchBackendUserId();
   }, [user]);
 
-  // useEffect(() => {
-  //   const fetchUserProjects = async () => {
-  //     if (isOpen && backendUserId) {
-  //       try {
-  //         const allProjects = await getProjects();
-  //         // Filter projects where user is a collaborator
-  //         const userProjects = allProjects.filter(p => p.collaborators?.includes(backendUserId));
-  //         setProjects(userProjects);
-  //       } catch (err) {
-  //         setProjects([]);
-  //       }
-  //     }
-  //   };
-  //   fetchUserProjects();
-  // }, [isOpen, backendUserId]);
+
 
   useEffect(() => {
     const fetchProjectTasks = async () => {
@@ -195,12 +183,55 @@ const AIAssistant = ({ isOpen, onClose }) => {
     
     setIsLoading(true);
     try {
-      const result = await smartTaskCreation(backendUserId, selectedProjectId, input, true);
-      const message = { 
-        type: "ai", 
-        content: "✅ Tasks have been created successfully! You can view them in your project board." 
+      // Use the correct endpoint and payload structure
+      const payload = {
+        user_id: backendUserId,
+        project_id: selectedProjectId,
+        description: input,
+        auto_create: true
       };
-      setMessages(prev => [...prev, message]);
+
+      const response = await fetch(`${API_BASE_URL}/ai/smart-task-creation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.created_tasks && result.created_tasks.length > 0) {
+        const message = { 
+          type: "ai", 
+          content: `✅ Successfully created ${result.created_tasks.length} tasks!\n\n${result.created_tasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n')}\n\nTasks are now available in your project board.`
+        };
+        setMessages(prev => [...prev, message]);
+
+        // Refresh project tasks to show newly created tasks
+        if (selectedProjectId) {
+          try {
+            const updatedTasks = await getTasks({ project_id: selectedProjectId });
+            setTasks(updatedTasks);
+            
+            // Call the callback to update parent component if provided
+            if (onTasksUpdated) {
+              onTasksUpdated(selectedProjectId);
+            }
+          } catch (err) {
+            console.error("Failed to refresh tasks:", err);
+          }
+        }
+      } else {
+        const message = {
+          type: "ai",
+          content: result.message || "Tasks were processed but may not have been created successfully."
+        };
+        setMessages(prev => [...prev, message]);
+      }
+
       setSuggestedTasks(null);
       setShowTaskCreationConfirm(false);
     } catch (error) {
@@ -221,6 +252,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
       setMessages((prev) => [...prev, { type: "error", content: "User not found in backend. Please refresh or try again later." }]);
       return;
     }
+    
     // Validation for project/task selection
     if (selectedAction.needsProject && !selectedProjectId) {
       setMessages((prev) => [...prev, { type: "error", content: "Please select a project." }]);
@@ -248,37 +280,66 @@ const AIAssistant = ({ isOpen, onClose }) => {
     try {
       // Special handling for task suggestions/creation
       if (selectedAction.id === "suggest_tasks") {
-        const result = await smartTaskCreation(backendUserId, selectedProjectId, input, false);
-        if (result.suggested_tasks) {
-          setSuggestedTasks(result.suggested_tasks);
-          setShowTaskCreationConfirm(true);
-          const message = {
-            type: "ai",
-            content: `I can help you create the following tasks:\n\n${result.suggested_tasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n')}\n\nWould you like me to create these tasks for you?`
-          };
-          setMessages(prev => [...prev, message]);
-        } else {
-          const message = {
-            type: "ai",
-            content: result.response || "I couldn't generate any task suggestions. Please try rephrasing your request."
-          };
-          setMessages(prev => [...prev, message]);
-        }
-      } else {
-        let payload = { user_id: backendUserId };
-        if (selectedProjectId) payload.project_id = selectedProjectId;
-        if (selectedTaskId) payload.task_id = selectedTaskId;
-        if (selectedAction.requestKey === "description") payload.description = input;
-        if (selectedAction.requestKey === "query") payload.query = input;
-        if (selectedAction.requestKey === "project_id") payload.project_id = selectedProjectId;
-        if (selectedAction.requestKey === "task_id") payload.task_id = selectedTaskId;
-        // For smart_task_creation, add auto_create: false
-        if (selectedAction.id === "suggest_tasks") payload.auto_create = true;
+        const payload = {
+          user_id: backendUserId,
+          project_id: selectedProjectId,
+          description: input,
+          auto_create: false
+        };
+
         const response = await fetch(selectedAction.endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.suggested_tasks && result.suggested_tasks.length > 0) {
+          setSuggestedTasks(result.suggested_tasks);
+          setShowTaskCreationConfirm(true);
+          const message = {
+            type: "ai",
+            content: `I can help you create the following tasks:\n\n${result.suggested_tasks.map((t, i) => `${i + 1}. **${t.title}**\n   Priority: ${t.priority}\n   Estimated: ${t.estimated_days} days\n   ${t.description}\n`).join('\n')}\nWould you like me to create these tasks for you?`
+          };
+          setMessages(prev => [...prev, message]);
+        } else {
+          const message = {
+            type: "ai",
+            content: result.message || "I couldn't generate any task suggestions. Please try rephrasing your request."
+          };
+          setMessages(prev => [...prev, message]);
+        }
+      } else {
+        // Handle other actions
+        let payload = { user_id: backendUserId };
+        
+        if (selectedAction.requestKey === "project_id" && selectedProjectId) {
+          payload.project_id = selectedProjectId;
+        }
+        if (selectedAction.requestKey === "task_id" && selectedTaskId) {
+          payload.task_id = selectedTaskId;
+        }
+        if (selectedAction.requestKey === "description") {
+          payload.description = input;
+        }
+        if (selectedAction.requestKey === "query") {
+          payload.query = input;
+          // Include project/task context for smart assistant
+          if (selectedProjectId) payload.project_id = selectedProjectId;
+          if (selectedTaskId) payload.task_id = selectedTaskId;
+        }
+
+        const response = await fetch(selectedAction.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
         if (!response.ok) {
           let errorMessage = `HTTP ${response.status}`;
           try {
@@ -287,41 +348,36 @@ const AIAssistant = ({ isOpen, onClose }) => {
           } catch (e) {}
           throw new Error(`API Error: ${errorMessage}`);
         }
+
+        const jsonResult = await response.json();
         let result;
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          const jsonResult = await response.json();
-          // Parse according to backend structure
-          if (jsonResult.response) {
-            result = jsonResult.response;
-          } else if (jsonResult.analysis) {
-            result = typeof jsonResult.analysis === "string" ? jsonResult.analysis : JSON.stringify(jsonResult.analysis, null, 2);
-          } else if (jsonResult.suggested_tasks) {
-            result = Array.isArray(jsonResult.suggested_tasks)
-              ? jsonResult.suggested_tasks.map((t, i) => `${i + 1}. ${t.title || JSON.stringify(t)}`).join("\n")
-              : JSON.stringify(jsonResult.suggested_tasks, null, 2);
-          } else if (jsonResult.automation) {
-            result = jsonResult.automation;
-          } else if (jsonResult.result) {
-            result = typeof jsonResult.result === "string" ? jsonResult.result : JSON.stringify(jsonResult.result, null, 2);
-          } else if (jsonResult.context) {
-            result = jsonResult.context;
-          } else {
-            result = JSON.stringify(jsonResult, null, 2);
-          }
+
+        // Parse response based on backend structure
+        if (jsonResult.response) {
+          result = jsonResult.response;
+        } else if (jsonResult.analysis) {
+          result = typeof jsonResult.analysis === "string" 
+            ? jsonResult.analysis 
+            : JSON.stringify(jsonResult.analysis, null, 2);
+        } else if (jsonResult.error) {
+          result = `Error: ${jsonResult.error}`;
+        } else if (jsonResult.message) {
+          result = jsonResult.message;
         } else {
-          result = await response.text();
+          result = JSON.stringify(jsonResult, null, 2);
         }
+
         if (!result || result.trim() === "") {
           throw new Error("Empty response from AI service");
         }
+
         const aiMessage = { type: "ai", content: result };
         setMessages((prev) => [...prev, aiMessage]);
       }
     } catch (error) {
       const errorMessage = {
         type: "error",
-        content: `Error: ${error.message}. Please check the console for more details.`,
+        content: `Error: ${error.message}`,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -342,68 +398,62 @@ const AIAssistant = ({ isOpen, onClose }) => {
       handleSubmit();
     }
   };
-
   const handleGeneralSubmit = async () => {
     if (!input.trim()) return;
     if (!backendUserId) {
       setMessages([{ type: "error", content: "User not found in backend. Please refresh or try again later." }]);
       return;
     }
+
     const smartAssistantAction = quickActions.find(a => a.id === "assistant");
     setSelectedAction(smartAssistantAction);
     const userMessage = { type: "user", content: input };
     setMessages([userMessage]);
     setIsLoading(true);
+
     try {
-      let payload = { user_id: backendUserId, query: input };
+      let payload = { 
+        user_id: backendUserId, 
+        query: input 
+      };
+      
+      // Include context if available
       if (selectedProjectId) payload.project_id = selectedProjectId;
       if (selectedTaskId) payload.task_id = selectedTaskId;
+
       const response = await fetch(smartAssistantAction.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}`;
-        try {
-          const errorText = await response.text();
-          errorMessage = errorText || errorMessage;
-        } catch (e) {}
-        throw new Error(`API Error: ${errorMessage}`);
+        throw new Error(`HTTP ${response.status}`);
       }
+
+      const jsonResult = await response.json();
       let result;
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const jsonResult = await response.json();
-        if (jsonResult.response) {
-          result = jsonResult.response;
-        } else if (jsonResult.analysis) {
-          result = typeof jsonResult.analysis === "string" ? jsonResult.analysis : JSON.stringify(jsonResult.analysis, null, 2);
-        } else if (jsonResult.suggested_tasks) {
-          result = Array.isArray(jsonResult.suggested_tasks)
-            ? jsonResult.suggested_tasks.map((t, i) => `${i + 1}. ${t.title || JSON.stringify(t)}`).join("\n")
-            : JSON.stringify(jsonResult.suggested_tasks, null, 2);
-        } else if (jsonResult.automation) {
-          result = jsonResult.automation;
-        } else if (jsonResult.result) {
-          result = typeof jsonResult.result === "string" ? jsonResult.result : JSON.stringify(jsonResult.result, null, 2);
-        } else if (jsonResult.context) {
-          result = jsonResult.context;
-        } else {
-          result = JSON.stringify(jsonResult, null, 2);
-        }
+
+      if (jsonResult.response) {
+        result = jsonResult.response;
+      } else if (jsonResult.error) {
+        result = `Error: ${jsonResult.error}`;
+      } else if (jsonResult.message) {
+        result = jsonResult.message;
       } else {
-        result = await response.text();
+        result = JSON.stringify(jsonResult, null, 2);
       }
+
       if (!result || result.trim() === "") {
         throw new Error("Empty response from AI service");
       }
+
       const aiMessage = { type: "ai", content: result };
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
       const errorMessage = {
         type: "error",
-        content: `Error: ${error.message}. Please check the console for more details.`,
+        content: `Error: ${error.message}`,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -411,243 +461,277 @@ const AIAssistant = ({ isOpen, onClose }) => {
       setInput("");
     }
   };
+const TaskCreationConfirmation = () => {
+    if (!showTaskCreationConfirm || !suggestedTasks) return null;
 
-  if (!isOpen) return null;
+    return (
+      <div className="p-4 border-t border-gray-700 bg-gray-800">
+        <div className="flex space-x-2">
+          <button
+            onClick={() => handleCreateTasks(suggestedTasks)}
+            disabled={isLoading}
+            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+          >
+            {isLoading ? "Creating..." : "Yes, Create Tasks"}
+          </button>
+          <button
+            onClick={() => {
+              setShowTaskCreationConfirm(false);
+              setSuggestedTasks(null);
+            }}
+            disabled={isLoading}
+            className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+          >
+            No, Cancel
+          </button>
+        </div>
+      </div>
+    );
 
-  return (
-    <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Background overlay */}
+
+ 
+};
+
+
+return (
+  <div className="fixed inset-0 z-50 pointer-events-none">
+    {/* Background overlay */}
+    <div
+      className={`absolute inset-0 bg-black transition-opacity duration-300 pointer-events-auto ${
+        isAnimating ? "opacity-30" : "opacity-0"
+      }`}
+      onClick={onClose}
+    />
+
+    {/* Modal positioned in bottom-right */}
+    <div className="absolute bottom-4 right-4 pointer-events-auto">
       <div
-        className={`absolute inset-0 bg-black transition-opacity duration-300 pointer-events-auto ${
-          isAnimating ? "opacity-30" : "opacity-0"
+        className={`bg-gray-900 rounded-lg shadow-2xl w-96 max-h-[600px] flex flex-col transform transition-all duration-300 ease-out origin-bottom-right ${
+          isAnimating
+            ? "scale-100 opacity-100 translate-y-0"
+            : "scale-50 opacity-0 translate-y-4"
         }`}
-        onClick={onClose}
-      />
-
-      {/* Modal positioned in bottom-right */}
-      <div className="absolute bottom-4 right-4 pointer-events-auto">
-        <div
-          className={`bg-gray-900 rounded-lg shadow-2xl w-96 max-h-[600px] flex flex-col transform transition-all duration-300 ease-out origin-bottom-right ${
-            isAnimating
-              ? "scale-100 opacity-100 translate-y-0"
-              : "scale-50 opacity-0 translate-y-4"
-          }`}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-700">
-            <div className="flex items-center space-x-2">
-              {selectedAction && (
-                <button
-                  onClick={handleBack}
-                  className="p-1 hover:bg-gray-700 rounded transition-colors"
-                >
-                  <div className="w-4 h-4 border-l-2 border-t-2 border-gray-400 transform rotate-[-45deg]"></div>
-                </button>
-              )}
-              <Sparkles className="w-5 h-5 text-blue-400" />
-              <h2 className="text-white font-semibold">
-                {selectedAction
-                  ? selectedAction.title
-                  : "Hi, how can I help you?"}
-              </h2>
-            </div>
-            <div className="flex items-center space-x-2">
+      >
+        {/* Header - same as before */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-700">
+          <div className="flex items-center space-x-2">
+            {selectedAction && (
               <button
-                onClick={onClose}
+                onClick={handleBack}
                 className="p-1 hover:bg-gray-700 rounded transition-colors"
               >
-                <X className="w-4 h-4 text-gray-400" />
+                <div className="w-4 h-4 border-l-2 border-t-2 border-gray-400 transform rotate-[-45deg]"></div>
               </button>
-            </div>
+            )}
+            <Sparkles className="w-5 h-5 text-blue-400" />
+            <h2 className="text-white font-semibold">
+              {selectedAction
+                ? selectedAction.title
+                : "Hi, how can I help you?"}
+            </h2>
           </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-gray-700 rounded transition-colors"
+            >
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+        </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-hidden">
-            {!selectedAction ? (
-              /* Quick Actions */
-              <div className="p-4">
-                <div className="text-sm text-gray-400 mb-4">For you</div>
-                <div className="space-y-2">
-                  {quickActions.map((action) => {
-                    const IconComponent = action.icon;
-                    return (
-                      <button
-                        key={action.id}
-                        onClick={() => handleActionSelect(action)}
-                        className="w-full flex items-center space-x-3 p-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors text-left"
-                      >
-                        <IconComponent className="w-5 h-5 text-gray-400" />
-                        <div>
-                          <div className="text-white font-medium">
-                            {action.title}
-                          </div>
-                          <div className="text-gray-400 text-sm">
-                            {action.description}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              /* Chat Interface */
-              <div className="flex flex-col h-full">
-                {/* Project/Task Dropdowns */}
-                {!hasAIResponse && (
-                  <div className="p-4 pb-0 flex flex-col gap-2">
-                    <label className="text-xs text-gray-400 mb-1">Project</label>
-                    <select
-                      className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={selectedProjectId}
-                      onChange={e => setSelectedProjectId(e.target.value)}
+        {/* Content - same structure but modified chat interface */}
+        <div className="flex-1 overflow-hidden">
+          {!selectedAction ? (
+            /* Quick Actions - same as before */
+            <div className="p-4">
+              <div className="text-sm text-gray-400 mb-4">For you</div>
+              <div className="space-y-2">
+                {quickActions.map((action) => {
+                  const IconComponent = action.icon;
+                  return (
+                    <button
+                      key={action.id}
+                      onClick={() => handleActionSelect(action)}
+                      className="w-full flex items-center space-x-3 p-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors text-left"
                     >
-                      <option value="">Select a project (optional)</option>
-                      {projects.map(project => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedProjectId && (
-                      <>
-                        <label className="text-xs text-gray-400 mb-1 mt-2">Task</label>
-                        <select
-                          className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={selectedTaskId}
-                          onChange={e => setSelectedTaskId(e.target.value)}
-                        >
-                          <option value="">Select a task (optional)</option>
-                          {tasks.map(task => (
-                            <option key={task.id} value={task.id}>
-                              {task.title}
-                            </option>
-                          ))}
-                        </select>
-                      </>
-                    )}
+                      <IconComponent className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <div className="text-white font-medium">
+                          {action.title}
+                        </div>
+                        <div className="text-gray-400 text-sm">
+                          {action.description}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* Chat Interface - same structure */
+            <div className="flex flex-col h-full">
+              {/* Project/Task Dropdowns - same as before */}
+              {!hasAIResponse && (
+                <div className="p-4 pb-0 flex flex-col gap-2">
+                  <label className="text-xs text-gray-400 mb-1">Project</label>
+                  <select
+                    className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedProjectId}
+                    onChange={e => setSelectedProjectId(e.target.value)}
+                  >
+                    <option value="">Select a project (optional)</option>
+                    {projects.map(project => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedProjectId && (
+                    <>
+                      <label className="text-xs text-gray-400 mb-1 mt-2">Task</label>
+                      <select
+                        className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={selectedTaskId}
+                        onChange={e => setSelectedTaskId(e.target.value)}
+                      >
+                        <option value="">Select a task (optional)</option>
+                        {tasks.map(task => (
+                          <option key={task.id} value={task.id}>
+                            {task.title}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Messages area - same as before */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-4 min-h-[200px]" style={{ maxHeight: 320 }}>
+                {messages.length === 0 && (
+                  <div className="text-gray-400 text-center py-8">
+                    {selectedAction.description}
                   </div>
                 )}
-                <div className="flex-1 p-4 overflow-y-auto space-y-4 min-h-[200px]" style={{ maxHeight: 320 }}>
-                  {messages.length === 0 && (
-                    <div className="text-gray-400 text-center py-8">
-                      {selectedAction.description}
-                    </div>
-                  )}
-                  {messages.map((message, index) => (
+                {messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${
+                      message.type === "user"
+                        ? "justify-end"
+                        : "justify-start"
+                    }`}
+                  >
                     <div
-                      key={index}
-                      className={`flex ${
+                      className={`max-w-[80%] p-3 rounded-lg whitespace-pre-wrap ${
                         message.type === "user"
-                          ? "justify-end"
-                          : "justify-start"
+                          ? "bg-blue-600 text-white"
+                          : message.type === "error"
+                          ? "bg-red-600 text-white"
+                          : "bg-gray-700 text-gray-100"
                       }`}
                     >
-                      <div
-                        className={`max-w-[80%] p-3 rounded-lg whitespace-pre-wrap ${
-                          message.type === "user"
-                            ? "bg-blue-600 text-white"
-                            : message.type === "error"
-                            ? "bg-red-600 text-white"
-                            : "bg-gray-700 text-gray-100"
-                        }`}
-                      >
-                        {message.content}
-                      </div>
+                      {message.content}
                     </div>
-                  ))}
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="bg-gray-700 text-gray-100 p-3 rounded-lg flex items-center space-x-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Thinking...</span>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Input Area */}
-                <div className="p-4 border-t border-gray-700">
-                  <div className="flex items-end space-x-2">
-                    <div className="flex-1">
-                      <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        placeholder={selectedAction.placeholder}
-                        className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                        rows="1"
-                        disabled={isLoading}
-                        style={{
-                          minHeight: "44px",
-                          maxHeight: "120px",
-                        }}
-                        onInput={(e) => {
-                          e.target.style.height = "auto";
-                          e.target.style.height =
-                            Math.min(e.target.scrollHeight, 120) + "px";
-                        }}
-                      />
-                    </div>
-                    <button
-                      onClick={handleSubmit}
-                      disabled={!input.trim() || isLoading}
-                      className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
-                    >
-                      <Send className="w-4 h-4 text-white" />
-                    </button>
                   </div>
-                </div>
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-700 text-gray-100 p-3 rounded-lg flex items-center space-x-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Thinking...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
-            )}
-          </div>
 
-          {/* General Input Area - Always visible at bottom */}
-          {!selectedAction && (
-            <div className="p-4 border-t border-gray-700">
-              <div className="flex items-center space-x-2">
-                <div className="flex-1">
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        if (input.trim()) {
-                          handleGeneralSubmit();
-                        }
-                      }
-                    }}
-                    placeholder="Ask me anything"
-                    className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    rows="1"
-                    style={{
-                      minHeight: "44px",
-                      maxHeight: "120px",
-                    }}
-                    onInput={(e) => {
-                      e.target.style.height = "auto";
-                      e.target.style.height =
-                        Math.min(e.target.scrollHeight, 120) + "px";
-                    }}
-                  />
+              {/* Task Creation Confirmation */}
+              <TaskCreationConfirmation />
+
+              {/* Input Area - same as before */}
+              <div className="p-4 border-t border-gray-700">
+                <div className="flex items-end space-x-2">
+                  <div className="flex-1">
+                    <textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      placeholder={selectedAction.placeholder}
+                      className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      rows="1"
+                      disabled={isLoading}
+                      style={{
+                        minHeight: "44px",
+                        maxHeight: "120px",
+                      }}
+                      onInput={(e) => {
+                        e.target.style.height = "auto";
+                        e.target.style.height =
+                          Math.min(e.target.scrollHeight, 120) + "px";
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!input.trim() || isLoading}
+                    className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
+                  >
+                    <Send className="w-4 h-4 text-white" />
+                  </button>
                 </div>
-                <button
-                  onClick={handleGeneralSubmit}
-                  disabled={!input.trim()}
-                  className="mb-[0.38rem] px-3 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
-                >
-                  <Send className="w-4 h-4 text-white" />
-                </button>
               </div>
             </div>
           )}
         </div>
+
+        {/* General Input Area - same as before */}
+        {!selectedAction && (
+          <div className="p-4 border-t border-gray-700">
+            <div className="flex items-center space-x-2">
+              <div className="flex-1">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (input.trim()) {
+                        handleGeneralSubmit();
+                      }
+                    }
+                  }}
+                  placeholder="Ask me anything"
+                  className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows="1"
+                  style={{
+                    minHeight: "44px",
+                    maxHeight: "120px",
+                  }}
+                  onInput={(e) => {
+                    e.target.style.height = "auto";
+                    e.target.style.height =
+                      Math.min(e.target.scrollHeight, 120) + "px";
+                  }}
+                />
+              </div>
+              <button
+                onClick={handleGeneralSubmit}
+                disabled={!input.trim()}
+                className="mb-[0.38rem] px-3 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
+              >
+                <Send className="w-4 h-4 text-white" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
-  );
-};
+  </div>
+);
+}
 
 // Main Navbar Component
 export default function Navbar() {
@@ -655,6 +739,17 @@ export default function Navbar() {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const handleTasksUpdated = (projectId) => {
+    // Trigger a refresh of the project board or task list
+    setRefreshTrigger(prev => prev + 1);
+    
+    // If you have a specific function to refresh tasks for a project, call it here
+    // refreshProjectTasks(projectId);
+    
+    // Or if you need to refresh the entire page data
+    window.location.reload(); // As a last resort
+  };
 
   return (
     <>
@@ -784,7 +879,12 @@ export default function Navbar() {
       </nav>
 
       {/* AI Assistant Modal */}
-      <AIAssistant isOpen={isAIOpen} onClose={() => setIsAIOpen(false)} />
+ 
+      <AIAssistant 
+  isOpen={isAIOpen} 
+  onClose={() => setIsAIOpen(false)}
+  onTasksUpdated={handleTasksUpdated}
+/>
     </>
   );
 }
