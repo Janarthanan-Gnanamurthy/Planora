@@ -205,7 +205,7 @@ class TaskAnalysisAgent:
     def __init__(self, db: Session):
         self.db = db
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.2
         )
@@ -344,7 +344,7 @@ class ProjectManagerAgent:
         self.db = db
         self.db_tools = DatabaseTools(db)
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
