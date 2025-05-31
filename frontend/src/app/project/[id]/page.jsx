@@ -1,7 +1,8 @@
 "use client";
-import React, { useEffect, useState, use } from "react";
+import React, { useEffect, useState, use, useMemo, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import useSWR, { mutate } from "swr";
 import TaskBoard from "../../../components/TaskBoard";
 import TaskTimeline from "../../../components/TaskTimeline";
 import EditTaskModal from "../../../components/EditTaskModal";
@@ -15,6 +16,23 @@ import {
 } from "../../../services/api";
 import { LayoutGrid } from "lucide-react";
 
+// SWR fetcher functions using your API service
+const fetchProject = async (projectId) => {
+  return await getProject(projectId);
+};
+
+const fetchUsers = async () => {
+  return await getUsers();
+};
+
+const fetchTasks = async (projectId) => {
+  return await getTasks({ project_id: projectId });
+};
+
+const fetchUserByClerkId = async (clerkId) => {
+  return await getUserByClerkId(clerkId);
+};
+
 export default function ProjectPage({ params }) {
   // Convert underscores back to hyphens for API calls
   const routeId = use(params).id;
@@ -22,16 +40,95 @@ export default function ProjectPage({ params }) {
 
   const { isLoaded, isSignedIn, user } = useUser();
   const router = useRouter();
-  const [project, setProject] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [collaborators, setCollaborators] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState("board");
   const [selectedTask, setSelectedTask] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [tasks, setTasks] = useState([]);
   const { addToast } = useToast();
+
+  // SWR hooks for data fetching with auto-refresh
+  const { 
+    data: project, 
+    error: projectError, 
+    isLoading: projectLoading 
+  } = useSWR(
+    isLoaded && isSignedIn && projectId ? `project-${projectId}` : null,
+    () => fetchProject(projectId),
+    {
+      refreshInterval: 5000, // Auto-refresh every 5 seconds
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true
+    }
+  );
+
+  const { 
+    data: users = [], 
+    error: usersError, 
+    isLoading: usersLoading 
+  } = useSWR(
+    isLoaded && isSignedIn ? 'users' : null,
+    fetchUsers,
+    {
+      refreshInterval: 5000,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true
+    }
+  );
+
+  const { 
+    data: tasks = [], 
+    error: tasksError, 
+    isLoading: tasksLoading 
+  } = useSWR(
+    isLoaded && isSignedIn && projectId ? `tasks-${projectId}` : null,
+    () => fetchTasks(projectId),
+    {
+      refreshInterval: 5000,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true
+    }
+  );
+
+  const { 
+    data: owner, 
+    error: ownerError, 
+    isLoading: ownerLoading 
+  } = useSWR(
+    project?.owner_id ? `owner-${project.owner_id}` : null,
+    () => fetchUserByClerkId(project.owner_id),
+    {
+      refreshInterval: 5000,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true
+    }
+  );
+
+  // Combined loading and error states
+  const isLoading = projectLoading || usersLoading || tasksLoading || ownerLoading;
+  const error = projectError || usersError || tasksError || ownerError;
+
+  // Memoize collaborators to prevent unnecessary recalculations
+  const collaborators = useMemo(() => {
+    if (!project || !users || !Array.isArray(users)) return [];
+    
+    if (project.collaborators && Array.isArray(project.collaborators)) {
+      return users.filter((user) =>
+        project.collaborators.includes(user.id)
+      );
+    }
+    return [];
+  }, [project, users]);
+
+  // Memoize tasks with names to prevent unnecessary recalculations
+  const tasksWithNames = useMemo(() => {
+    if (!Array.isArray(tasks) || !Array.isArray(collaborators)) return [];
+    
+    return tasks.map((task) => ({
+      ...task,
+      assigneeName:
+        collaborators.find((u) => u.id === task.assigned_to)
+          ?.username || "Unassigned",
+    }));
+  }, [tasks, collaborators]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -40,103 +137,46 @@ export default function ProjectPage({ params }) {
       router.push("/sign-in");
       return;
     }
-
-    const fetchProjectData = async () => {
-      try {
-        console.log("Fetching project data for ID:", projectId);
-        const projectData = await getProject(projectId);
-        console.log("Project data received:", projectData);
-        const usersData = await getUsers();
-        console.log("users data received:", usersData);
-        const tasksList = await getTasks({ project_id: projectId });
-        console.log("tasks data received:", tasksList);
-
-        if (!projectData) {
-          console.error("Project not found");
-          setError("Project not found");
-          setIsLoading(false);
-          return;
-        }
-
-        // Get the owner's details first
-        console.log("Fetching owner details for ID:", projectData.owner_id);
-        const owner = await getUserByClerkId(projectData.owner_id);
-        console.log("Owner data:", owner);
-
-        if (!owner) {
-          console.error("Project owner not found");
-          setError("Project owner not found");
-          setIsLoading(false);
-          return;
-        }
-
-        // Filter collaborators from users data based on collaborator IDs
-        let projectCollaborators = [];
-
-        // Filter collaborators if they exist
-        if (
-          projectData.collaborators &&
-          Array.isArray(projectData.collaborators)
-        ) {
-          projectCollaborators = usersData.filter((user) =>
-            projectData.collaborators.includes(user.id)
-          );
-        }
-
-        console.log("Final collaborators:", projectCollaborators);
-
-        setProject(projectData);
-        setUsers(usersData);
-        setCollaborators(projectCollaborators);
-        setTasks(
-          tasksList.map((task) => ({
-            ...task,
-            assigneeName:
-              projectCollaborators.find((u) => u.id === task.assigned_to)
-                ?.username || "Unassigned",
-          }))
-        );
-        setError(null);
-      } catch (error) {
-        console.error("Failed to fetch project data:", error);
-        setError(error.message || "Failed to load project");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProjectData();
-  }, [isLoaded, isSignedIn, projectId, user]);
+  }, [isLoaded, isSignedIn, router]);
 
   // Add this function to handle task clicks in timeline view
-  const handleTaskClick = (task) => {
+  const handleTaskClick = useCallback((task) => {
     setSelectedTask(task);
     setIsEditModalOpen(true);
-  };
+  }, []);
 
-  // Add this function to handle task updates
-  const handleTaskUpdate = async (updatedTask) => {
+  // Add this function to handle task updates with SWR
+  const handleTaskUpdate = useCallback(async (updatedTask) => {
     try {
       const response = await updateTask(updatedTask.id, updatedTask);
-      addToast("Success!", "Task updated  ", "success");
+      addToast("Success!", "Task updated", "success");
 
-      const updatedTaskWithName = {
-        ...response,
-        assigneeName:
-          collaborators.find((u) => u.id === response.assigned_to)?.username ||
-          "Unassigned",
-      };
-      setTasks((prevTasks) =>
-        prevTasks.map((task) =>
-          task.id === response.id ? updatedTaskWithName : task
-        )
+      // Optimistically update the tasks cache
+      mutate(
+        `tasks-${projectId}`,
+        tasks.map((task) => (task.id === response.id ? response : task)),
+        false
       );
+
+      // Revalidate to ensure consistency
+      mutate(`tasks-${projectId}`);
+
       setIsEditModalOpen(false);
       setSelectedTask(null);
     } catch (error) {
       console.error("Failed to update task:", error);
+      addToast("Error", "Failed to update task", "error");
+      
+      // Revalidate on error to restore correct state
+      mutate(`tasks-${projectId}`);
     }
-  };
+  }, [addToast, projectId, tasks]);
+
+  // Memoized callback for tasks change to prevent unnecessary re-renders in child components
+  const handleTasksChange = useCallback((newTasks) => {
+    // If using this callback, make sure to mutate SWR cache instead of local state
+    mutate(`tasks-${projectId}`, newTasks, false);
+  }, [projectId]);
 
   if (!isLoaded || isLoading) {
     return (
@@ -158,9 +198,21 @@ export default function ProjectPage({ params }) {
             Project Not Found
           </h1>
           <p className="text-gray-600">
-            {error ||
+            {error?.message ||
               "This project doesn't exist or you don't have access to it."}
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!owner) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">
+            Loading Project Owner...
+          </h1>
         </div>
       </div>
     );
@@ -225,15 +277,16 @@ export default function ProjectPage({ params }) {
           <TaskBoard
             project={project}
             users={collaborators}
-            tasks={tasks}
-            onTasksChange={setTasks}
+            tasks={tasksWithNames}
+            onTasksChange={handleTasksChange}
           />
         ) : (
           <TaskTimeline
             project={project}
             users={collaborators}
-            tasks={tasks}
-            onTasksChange={setTasks}
+            tasks={tasksWithNames}
+            onTasksChange={handleTasksChange}
+            onTaskClick={handleTaskClick}
           />
         )}
 

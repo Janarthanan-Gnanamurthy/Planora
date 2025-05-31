@@ -21,6 +21,7 @@ import {
   getUsers,
 } from "../services/api";
 import { smartTaskCreation } from "../services/api";
+import { marked } from "marked";
 
 // AI Assistant Component
 const AIAssistant = ({ isOpen, onClose }) => {
@@ -193,7 +194,7 @@ const AIAssistant = ({ isOpen, onClose }) => {
         auto_create: true,
       };
 
-      const response = await fetch(`${API_BASE_URL}/ai/smart-task-creation`, {
+      const response = await fetch(`${API_BASE_URL}/ai/smart_task_creation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -224,10 +225,10 @@ const AIAssistant = ({ isOpen, onClose }) => {
             });
             setTasks(updatedTasks);
 
-            // Call the callback to update parent component if provided
-            if (onTasksUpdated) {
-              onTasksUpdated(selectedProjectId);
-            }
+            // // Call the callback to update parent component if provided
+            // if (onTasksUpdated) {
+            //   onTasksUpdated(selectedProjectId);
+            // }
           } catch (err) {
             console.error("Failed to refresh tasks:", err);
           }
@@ -706,17 +707,26 @@ const AIAssistant = ({ isOpen, onClose }) => {
                           : "justify-start"
                       }`}
                     >
-                      <div
-                        className={`max-w-[80%] p-3 rounded-lg whitespace-pre-wrap ${
-                          message.type === "user"
-                            ? "bg-blue-600 text-white"
-                            : message.type === "error"
-                            ? "bg-red-600 text-white"
-                            : "bg-gray-700 text-gray-100"
-                        }`}
-                      >
-                        {message.content}
-                      </div>
+                      {selectedAction &&
+                        selectedAction.id === "project_insights" &&
+                        message.type === "ai" ? (
+                          <div
+                            className={`max-w-[80%] p-3 rounded-lg whitespace-pre-wrap bg-gray-700 text-gray-100`}
+                            dangerouslySetInnerHTML={{ __html: marked.parse(message.content) }}
+                          />
+                        ) : (
+                          <div
+                            className={`max-w-[80%] p-3 rounded-lg whitespace-pre-wrap ${
+                              message.type === "user"
+                                ? "bg-blue-600 text-white"
+                                : message.type === "error"
+                                ? "bg-red-600 text-white"
+                                : "bg-gray-700 text-gray-100"
+                            }`}
+                          >
+                            {message.content}
+                          </div>
+                        )}
                     </div>
                   ))}
                   {isLoading && (
@@ -965,7 +975,7 @@ export default function Navbar() {
       <AIAssistant
         isOpen={isAIOpen}
         onClose={() => setIsAIOpen(false)}
-        onTasksUpdated={handleTasksUpdated}
+        // onTasksUpdated={handleTasksUpdated}
       />
     </>
   );

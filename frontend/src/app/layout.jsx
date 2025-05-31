@@ -20,9 +20,9 @@ export default function RootLayout({ children }) {
       <ToastProvider>
         <html lang="en">
           <body className={inter.className}>
-            {/* <ClientUserSync />
-             */}
-            <UserSync />
+            <ClientUserSync />
+            
+            {/* <UserSync /> */}
 
             <Navbar />
             <main>{children}</main>

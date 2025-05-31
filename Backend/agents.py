@@ -589,7 +589,7 @@ async def ai_task_optimizer(task_id: str, db: Session):
 
 
 async def ai_smart_task_creation(user_id: str, project_id: str, description: str, 
-                               db: Session, auto_create: bool = True):
+                               db: Session, auto_create: bool ):
     """Intelligently create tasks with AI suggestions"""
     try:
         # Get task suggestions from AI
@@ -609,7 +609,7 @@ async def ai_smart_task_creation(user_id: str, project_id: str, description: str
         creation_errors = []
         
         # Auto-create tasks if requested
-        if True:
+        if auto_create:
             db_tools = DatabaseTools(db)
             
             for task_data in suggested_tasks:
