@@ -10,76 +10,76 @@
 
 Planora is a cutting-edge full-stack application that revolutionizes project management through artificial intelligence. Experience seamless planning, tracking, and collaboration like never before.
 
-## 🏗️ Project Structure
+## 📁 Project Structure
 
 ```
-📁 Planora
-├── 📱 frontend/    # Next.js application
-└── ⚙️ Backend/     # FastAPI (Python) application
+Planora
+├── frontend/    # Next.js application
+└── Backend/     # FastAPI (Python) application
 ```
 
-## 💻 Tech Stack
+## 🛠️ Tech Stack
 
 ### 🔧 Backend
 
-- 🚅 **Framework:** FastAPI
-- 🗄️ **Database:** PostgreSQL on Amazon RDS (with SQLAlchemy ORM)
-- 🔐 **Authentication:** Clerk integration
-- 🧠 **AI:** Google Gemini (gemini-2.0-flash or gemini-pro)
-- 📝 **Libraries:** Pydantic for data validation
+- **Framework:** FastAPI
+- **Database:** PostgreSQL on Amazon RDS (with SQLAlchemy ORM)
+- **Authentication:** Clerk integration
+- **AI:** Google Gemini (gemini-2.0-flash or gemini-pro)
+- **Libraries:** Pydantic for data validation
 
 ### 🎨 Frontend
 
-- ⚛️ **Framework:** Next.js
-- 🎯 **Styling:** Tailwind CSS
-- 📊 **State Management:** Zustand
-- 🔒 **Authentication:** Clerk (@clerk/nextjs)
-- 🎉 **Icons:** Lucide React
-- 🔍 **Linting:** ESLint
+- **Framework:** Next.js
+- **Styling:** Tailwind CSS
+- **State Management:** Zustand
+- **Authentication:** Clerk (@clerk/nextjs)
+- **Icons:** Lucide React
+- **Linting:** ESLint
 
 ## ✨ Core Features
 
 ### 👥 User Management
-- 🔐 Secure user registration and login
-- 👤 User profile management
+-  Secure user registration and login
+-  User profile management
 
 ### 📋 Project Management
-- 📝 Create, view, update, and delete projects
-- 👑 Assign project owners
-- 👥 Add and manage project collaborators
+-  Create, view, update, and delete projects
+-  Assign project owners
+-  Add and manage project collaborators
 
 ### ✅ Task Management
-- 📌 Create and manage tasks within projects
-- 👤 Assign tasks to team members
-- 🚦 Set task status and priority
-- ⏰ Define deadlines
-- 🔍 Advanced task filtering
+-  Create and manage tasks within projects
+-  Assign tasks to team members
+-  Set task status and priority
+-  Define deadlines
+-  Advanced task filtering
 
 ### 🤝 Collaboration
-- 💬 Rich commenting system
-- 🔔 Real-time updates and notifications
+- Rich commenting system
+-  Real-time updates and notifications
 
 ### 🤖 AI-Powered Enhancements
 
-- 🧠 **Smart Assistant:** Get AI-driven help and suggestions
-- 📊 **Project Insights:** AI-generated analysis
-- ⚡ **Task Optimizer:** Efficiency suggestions
-- 🎯 **Smart Task Creation:** AI-powered task generation
-- 🔄 **Workflow Automation:**
-  - 📅 Daily stand-up summaries
-  - 📈 Weekly review generations
-  - ⏰ Smart deadline alerts
-- 📈 **Team Insights:** Performance and workload analysis
+- **Smart Assistant:** Get AI-driven help and suggestions
+-  **Project Insights:** AI-generated analysis
+-  **Task Optimizer:** Efficiency suggestions
+-  **Smart Task Creation:** AI-powered task generation
+-  **Workflow Automation:**
+  -  Daily stand-up summaries
+  -  Weekly review generations
+  -  Smart deadline alerts
+-  **Team Insights:** Performance and workload analysis
 
 ## 🚀 Getting Started
 
 ### 📋 Prerequisites
-- 📦 Node.js and npm/yarn for the frontend
-- 🐍 Python and pip for the backend
-- 🗄️ Amazon RDS PostgreSQL instance
-- 🔑 Google API Key for AI features
-- 🔒 Clerk account and API keys for authentication
-- ☁️ AWS credentials with RDS access
+-  Node.js and npm/yarn for the frontend
+-  Python and pip for the backend
+-  Amazon RDS PostgreSQL instance
+-  Google API Key for AI features
+-  Clerk account and API keys for authentication
+-  AWS credentials with RDS access
 
 ### ⚙️ Backend Setup
 
@@ -163,22 +163,22 @@ Planora is a cutting-edge full-stack application that revolutionizes project man
 The backend exposes a RESTful API with these key endpoint groups:
 
 ```
-📡 /users    - User management
-📋 /projects - Project operations
-✅ /tasks    - Task management
-💬 /comments - Discussion system
-🤖 /ai/*     - AI functionalities
+ /users    - User management
+ /projects - Project operations
+ /tasks    - Task management
+ /comments - Discussion system
+ /ai/*     - AI functionalities
 ```
 
 *Refer to `Backend/app.py` for detailed endpoint definitions and schemas.*
 
 ## 🚀 Future Enhancements
 
-- 🔔 Real-time notifications for task updates and comments
-- 📊 Advanced reporting and analytics dashboards
-- 📎 File attachments for tasks and projects
-- 🔄 Integration with third-party tools
-- 🧠 Enhanced AI-driven scheduling and resource allocation
+-  Real-time notifications for task updates and comments
+-  Advanced reporting and analytics dashboards
+-  File attachments for tasks and projects
+-  Integration with third-party tools
+-  Enhanced AI-driven scheduling and resource allocation
 
 ## 🤝 Contributing
 
