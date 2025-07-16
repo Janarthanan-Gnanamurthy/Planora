@@ -18,7 +18,7 @@ import database, models, schemas # Use relative imports if files are in the same
 # --- CONFIG ---
 # Ensure GOOGLE_API_KEY is set in your environment variables
 try:
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY","AIzaSyDHKg9AFSfhOgBT_gyUQKQwB4-0N8MvlSQ"))
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
     model = genai.GenerativeModel('gemini-2.0-flash') # or 'gemini-pro'
 except Exception as e:
     print(f"Error configuring Gemini SDK: {e}. AI features might not work.")
