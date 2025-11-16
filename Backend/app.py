@@ -5,9 +5,14 @@ from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Dict, Any
 import uuid
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from agents import ai_smart_assistant, ai_project_insights, ai_task_optimizer, ai_smart_task_creation
+from agents import ai_smart_assistant, ai_project_insights, ai_optimize_task, ai_smart_task_creation
 
 
 import google.generativeai as genai
@@ -28,14 +33,14 @@ except Exception as e:
 # --- FASTAPI APP INITIALIZATION ---
 app = FastAPI(title="AI Project Management Backend with RDS")
 
-# origins = [
-#     "http://localhost:3000",
-#     "http://127.0.0.1:3000"
-# ]
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or ["*"] to allow all (not recommended for production)
+    allow_origins=origins,  # Use specific origins when allow_credentials=True
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -78,11 +83,14 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)
     return db_user
 
 @app.get("/users", response_model=List[schemas.User], tags=["Users"])
-def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+def list_users(skip: int = 0, limit: int = 100, clerkId: str = None, db: Session = Depends(database.get_db)):
     """
-    Retrieve a list of users with pagination.
+    Retrieve a list of users with pagination. Can filter by clerkId.
     """
-    users = db.query(models.User).offset(skip).limit(limit).all()
+    query = db.query(models.User)
+    if clerkId:
+        query = query.filter(models.User.clerkId == clerkId)
+    users = query.offset(skip).limit(limit).all()
     return users
 
 @app.get("/users/{user_id}", response_model=schemas.User, tags=["Users"])
@@ -112,7 +120,7 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(databas
         name=project.name,
         description=project.description,
         owner_id=project.owner_id,
-        collaborators=project.collaborators
+        collaborators=",".join(project.collaborators) if project.collaborators else None
     )
     try:
         db.add(db_project)
@@ -159,13 +167,16 @@ def add_collaborators_to_project(
     #         raise HTTPException(status_code=404, detail=f"Collaborator user with id {user_id} not found")
 
     # Get existing collaborators or initialize empty list
-    existing_collaborators = db_project.collaborators or []
+    if db_project.collaborators:
+        existing_collaborators = [collab.strip() for collab in db_project.collaborators.split(",") if collab.strip()]
+    else:
+        existing_collaborators = []
     
     # Add new collaborators, avoiding duplicates
     new_collaborators = list(set(existing_collaborators + data.collaborator_ids))
     
-    # Update the project's collaborators
-    db_project.collaborators = new_collaborators
+    # Update the project's collaborators as comma-separated string
+    db_project.collaborators = ",".join(new_collaborators) if new_collaborators else None
     try:
         db.commit()
         db.refresh(db_project)
@@ -191,7 +202,7 @@ def create_task(task: schemas.TaskCreate, db: Session = Depends(database.get_db)
             raise HTTPException(status_code=404, detail=f"Assignee user with id {task.assigned_to} not found")
     
     task_id = str(uuid.uuid4())
-    created_at = task.created_at if task.created_at else datetime.utcnow().isoformat()
+    created_at = task.created_at if task.created_at else datetime.utcnow()
     db_task = models.Task(
         id=task_id,
         project_id=task.project_id,
@@ -257,11 +268,16 @@ def update_task(task_id: str, task_update: schemas.TaskUpdate, db: Session = Dep
 
     update_data = task_update.dict(exclude_unset=True)
 
-    if "assigned_to" in update_data and update_data["assigned_to"] is not None:
-        db_assignee = db.query(models.User).filter(models.User.id == update_data["assigned_to"]).first()
-        if not db_assignee:
-            raise HTTPException(status_code=404, detail=f"Assignee user with id {update_data['assigned_to']} not found")
-        db_task.assigned_to_id = update_data["assigned_to"] # Map to DB model field
+    # Handle assigned_to - always remove from dict since it's a read-only property
+    if "assigned_to" in update_data:
+        if update_data["assigned_to"] is not None:
+            db_assignee = db.query(models.User).filter(models.User.id == update_data["assigned_to"]).first()
+            if not db_assignee:
+                raise HTTPException(status_code=404, detail=f"Assignee user with id {update_data['assigned_to']} not found")
+            db_task.assigned_to_id = update_data["assigned_to"] # Map to DB model field
+        else:
+            # Set to None if explicitly provided
+            db_task.assigned_to_id = None
         del update_data["assigned_to"] # Remove from dict to avoid direct assignment
 
     # Handle created_at and priority
@@ -272,8 +288,11 @@ def update_task(task_id: str, task_update: schemas.TaskUpdate, db: Session = Dep
         db_task.priority = update_data["priority"]
         del update_data["priority"]
 
+    # Only set attributes that are actual database columns (not properties or relationships)
+    allowed_fields = {"title", "description", "status", "deadline"}
     for key, value in update_data.items():
-        setattr(db_task, key, value)
+        if key in allowed_fields:
+            setattr(db_task, key, value)
     
     try:
         db.commit()
@@ -389,7 +408,7 @@ async def get_project_insights(
     - Resource allocation suggestions
     - Risk assessment
     """
-    insights = await ai_project_insights(user_id, project_id, db)
+    insights = await ai_project_insights(project_id, db)
     return insights
 
 
@@ -406,7 +425,7 @@ async def optimize_task(
     - Risk factors
     - Dependencies analysis
     """
-    optimization = await ai_task_optimizer(task_id, db)
+    optimization = await ai_optimize_task(task_id, db)
     return  optimization
 
 
@@ -426,8 +445,7 @@ async def smart_create_tasks(
     - Considers dependencies
     - Optionally auto-creates tasks
     """    
-    print("hello")
-    result = await ai_smart_task_creation(user_id, project_id, description, db, auto_create)
+    result = await ai_smart_task_creation(project_id, description, db, auto_create)
     return result
 
 

@@ -1,5 +1,5 @@
 # schemas.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict
 import uuid
 import os
@@ -30,6 +30,15 @@ class Project(ProjectBase): # Response model
     id: str
     owner_id: str
     collaborators: Optional[List[str]] = None
+    
+    @field_validator('collaborators', mode='before')
+    @classmethod
+    def parse_collaborators(cls, v):
+        """Convert comma-separated string to list for API compatibility."""
+        if isinstance(v, str):
+            return [collab.strip() for collab in v.split(",") if collab.strip()]
+        return v
+    
     # To include the full owner object in responses, you could add:
     # owner: User
 

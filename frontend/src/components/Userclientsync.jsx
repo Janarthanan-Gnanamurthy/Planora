@@ -5,5 +5,5 @@ import UserSync from "./UserSync";
 
 export default function ClientUserSync() {
   const { user } = useUser();
-  return !user ? <UserSync /> : null;
+  return user ? <UserSync /> : null;
 }

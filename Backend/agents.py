@@ -1,34 +1,40 @@
 import os
-import re
 import json
+import re
+import uuid
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, TypedDict, Annotated
+from typing import Dict, List, Optional, Any
 from sqlalchemy.orm import Session
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# LangChain imports
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
+from langgraph.graph import StateGraph, START, END, MessagesState
 from langgraph.checkpoint.memory import MemorySaver
-import uuid
-from database import get_db
-import models
-import schemas
+from langgraph.prebuilt import ToolNode
+from typing_extensions import TypedDict
 
 
-class AgentState(TypedDict):
-    """State shared across all agents"""
-    messages: Annotated[List, "Messages in the conversation"]
+class AgentState(MessagesState):
+    """Custom state that extends MessagesState with additional fields"""
     user_id: str
-    project_id: Optional[str]
-    task_id: Optional[str]
-    context: Dict
-    action_taken: bool
-    result: Dict
+    project_id: Optional[str] = None
+    task_id: Optional[str] = None
+    context: Dict = {}
+    action_taken: bool = False
+    result: Dict = {}
+
+# Import models
+import models
 
 
 class DatabaseTools:
-    """Tools for database operations"""
+    """Database interaction tools for the AI agent"""
     
     def __init__(self, db: Session):
         self.db = db
@@ -45,9 +51,12 @@ class DatabaseTools:
                 "id": project.id,
                 "name": project.name,
                 "description": project.description,
+                "status": project.status,
+                "created_at": project.created_at.isoformat(),
                 "task_count": len(project.tasks),
                 "completed_tasks": len([t for t in project.tasks if t.status == "done"])
             })
+        
         return projects
     
     def get_project_tasks_func(self, project_id: str, status: Optional[str] = None) -> List[Dict]:
@@ -56,63 +65,61 @@ class DatabaseTools:
         if not project:
             return []
         
-        tasks = project.tasks
-        if status:
-            tasks = [t for t in tasks if t.status == status]
-        
-        task_list = []
-        for task in tasks:
-            assignee_name = task.assignee.username if task.assignee else "Unassigned"
-            task_list.append({
+        tasks = []
+        for task in project.tasks:
+            if status and task.status != status:
+                continue
+            
+            tasks.append({
                 "id": task.id,
                 "title": task.title,
                 "description": task.description,
                 "status": task.status,
                 "priority": task.priority,
-                "assigned_to": assignee_name,
                 "deadline": task.deadline.isoformat() if task.deadline else None,
-                "overdue": task.deadline < datetime.now() if task.deadline else False
+                "created_at": task.created_at.isoformat(),
+                "assigned_to": task.assignee.username if task.assignee else None
             })
-        return task_list
+        
+        return tasks
     
     def create_task_func(self, project_id: str, title: str, description: str = "", 
                         priority: str = "medium", assigned_to_id: Optional[str] = None,
                         deadline_days: int = 7) -> Dict:
         """Create a new task"""
-        try:
-            task_id = str(uuid.uuid4())
-            deadline = datetime.now() + timedelta(days=deadline_days)
-            
-            new_task = models.Task(
-                id=task_id,
-                project_id=project_id,
-                title=title,
-                description=description,
-                priority=priority,
-                assigned_to_id=assigned_to_id,
-                created_at=datetime.now(),
-                deadline=deadline,
-                status="todo"
-            )
-            
-            self.db.add(new_task)
-            self.db.commit()
-            self.db.refresh(new_task)
-            
-            return {
-                "id": new_task.id,
-                "title": new_task.title,
-                "description": new_task.description,
-                "priority": new_task.priority,
-                "status": "created_successfully",
-                "deadline": deadline.isoformat()
-            }
-        except Exception as e:
-            self.db.rollback()
-            return {
-                "error": f"Failed to create task: {str(e)}",
-                "status": "failed"
-            }
+        project = self.db.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            return {"error": "Project not found"}
+        
+        # Calculate deadline
+        deadline = datetime.now() + timedelta(days=deadline_days)
+        
+        # Create task
+        task = models.Task(
+            id=str(uuid.uuid4()),
+            title=title,
+            description=description,
+            priority=priority,
+            deadline=deadline,
+            created_at=datetime.now(),
+            project_id=project_id,
+            assigned_to_id=assigned_to_id,
+            status="todo"
+        )
+        
+        self.db.add(task)
+        self.db.commit()
+        self.db.refresh(task)
+        
+        return {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "status": task.status,
+            "priority": task.priority,
+            "deadline": task.deadline.isoformat(),
+            "project_id": task.project_id
+        }
     
     def update_task_status_func(self, task_id: str, status: str) -> Dict:
         """Update task status"""
@@ -120,19 +127,15 @@ class DatabaseTools:
         if not task:
             return {"error": "Task not found"}
         
-        try:
-            task.status = status
-            self.db.commit()
-            
-            return {
-                "task_id": task_id,
-                "title": task.title,
-                "new_status": status,
-                "updated": True
-            }
-        except Exception as e:
-            self.db.rollback()
-            return {"error": f"Failed to update task: {str(e)}"}
+        task.status = status
+        self.db.commit()
+        
+        return {
+            "id": task.id,
+            "title": task.title,
+            "status": task.status,
+            "project_id": task.project_id
+        }
     
     def get_overdue_tasks_func(self, user_id: str) -> List[Dict]:
         """Get all overdue tasks for a user's projects"""
@@ -204,11 +207,20 @@ class TaskAnalysisAgent:
     
     def __init__(self, db: Session):
         self.db = db
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
-            temperature=0.2
-        )
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            print("ERROR: GOOGLE_API_KEY not found. TaskAnalysisAgent will not work.")
+            self.llm = None
+        else:
+            try:
+                self.llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.0-flash",
+                    google_api_key=google_api_key,
+                    temperature=0.2
+                )
+            except Exception as e:
+                print(f"ERROR: Failed to initialize TaskAnalysisAgent LLM: {e}")
+                self.llm = None
     
     def analyze_task_complexity(self, task_id: str) -> Dict:
         """Analyze task complexity and suggest breakdown"""
@@ -343,21 +355,32 @@ class ProjectManagerAgent:
     def __init__(self, db: Session):
         self.db = db
         self.db_tools = DatabaseTools(db)
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
-            temperature=0.1
-        )
-        
-        # Get tools as properties
-        self.tools = [
-            self.db_tools.get_user_projects,
-            self.db_tools.get_project_tasks,
-            self.db_tools.create_task,
-            self.db_tools.update_task_status,
-            self.db_tools.get_overdue_tasks
-        ]
-        self.llm_with_tools = self.llm.bind_tools(self.tools)
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            print("ERROR: GOOGLE_API_KEY not found. ProjectManagerAgent will not work.")
+            self.llm = None
+            self.llm_with_tools = None
+        else:
+            try:
+                self.llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.0-flash",
+                    google_api_key=google_api_key,
+                    temperature=0.1
+                )
+                
+                # Get tools as properties
+                self.tools = [
+                    self.db_tools.get_user_projects,
+                    self.db_tools.get_project_tasks,
+                    self.db_tools.create_task,
+                    self.db_tools.update_task_status,
+                    self.db_tools.get_overdue_tasks
+                ]
+                self.llm_with_tools = self.llm.bind_tools(self.tools)
+            except Exception as e:
+                print(f"ERROR: Failed to initialize ProjectManagerAgent LLM: {e}")
+                self.llm = None
+                self.llm_with_tools = None
         
         # Create the graph
         self.graph = self._create_graph()
@@ -572,119 +595,82 @@ smart_pm = SmartProjectManager()
 # FastAPI endpoint functions (to replace your existing ones)
 async def ai_smart_assistant(user_id: str, query: str, project_id: str = None, 
                            task_id: str = None, db: Session = None):
-    """Main AI assistant endpoint"""
+    """AI smart assistant endpoint"""
     return await smart_pm.process_request(user_id, query, project_id, task_id, db)
 
 
-async def ai_project_insights(user_id: str, project_id: str, db: Session):
-    """Get comprehensive project insights"""
-    query = f"Provide a comprehensive analysis of project status, identify bottlenecks, overdue tasks, and strategic recommendations for project {project_id}"
-    return await smart_pm.process_request(user_id, query, project_id, None, db)
-
-
-async def ai_task_optimizer(task_id: str, db: Session):
-    """Optimize and analyze specific task"""
-    agent = smart_pm.get_agent("task_analyzer", db)
-    return agent.analyze_task_complexity(task_id)
-
-
-async def ai_smart_task_creation(user_id: str, project_id: str, description: str, 
-                               db: Session, auto_create: bool ):
-    """Intelligently create tasks with AI suggestions"""
+async def ai_project_insights(project_id: str, db: Session = None):
+    """Get AI-powered project insights"""
     try:
-        # Get task suggestions from AI
+        agent = smart_pm.get_agent("project_manager", db)
+        
+        # Get project context
+        project = db.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            return {"error": "Project not found"}
+        
+        # Generate insights
+        query = f"Provide comprehensive insights for project '{project.name}' including status, risks, and recommendations"
+        result = await smart_pm.process_request(
+            user_id=project.owner_id,
+            query=query,
+            project_id=project_id,
+            db=db
+        )
+        
+        return result
+    except Exception as e:
+        return {"error": f"Failed to generate insights: {str(e)}"}
+
+
+async def ai_optimize_task(task_id: str, db: Session = None):
+    """Optimize a specific task using AI"""
+    try:
         agent = smart_pm.get_agent("task_analyzer", db)
-        suggested_tasks = agent.suggest_task_breakdown(description, {
-            "user_id": user_id,
-            "project_id": project_id
-        })
+        return agent.analyze_task_complexity(task_id)
+    except Exception as e:
+        return {"error": f"Failed to optimize task: {str(e)}"}
+
+
+async def ai_smart_task_creation(project_id: str, description: str, db: Session = None, auto_create: bool = False):
+    """Create tasks intelligently based on description"""
+    try:
+        agent = smart_pm.get_agent("task_analyzer", db)
         
-        if not suggested_tasks:
-            return {
-                "error": "Could not generate task suggestions",
-                "message": "Please try with a more detailed description"
-            }
+        # Get project context
+        project = db.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            return {"error": "Project not found"}
         
+        # Generate task suggestions
+        suggested_tasks = agent.suggest_task_breakdown(
+            description, 
+            {"user_id": project.owner_id, "project_id": project_id}
+        )
+        
+        # Create the tasks only if auto_create is True
         created_tasks = []
-        creation_errors = []
-        
-        # Auto-create tasks if requested
         if auto_create:
-            db_tools = DatabaseTools(db)
+            tools = DatabaseTools(db)
             
             for task_data in suggested_tasks:
                 try:
-                    # Ensure we have required fields
-                    title = task_data.get("title", "Untitled Task")
-                    description_text = task_data.get("description", "")
-                    priority = task_data.get("priority", "medium")
-                    deadline_days = task_data.get("estimated_days", 7)
-                    
-                    # Create task directly using database operations
-                    task_id = str(uuid.uuid4())
-                    deadline = datetime.now() + timedelta(days=deadline_days)
-                    
-                    new_task = models.Task(
-                        id=task_id,
+                    created_task = tools.create_task_func(
                         project_id=project_id,
-                        title=title,
-                        description=description_text,
-                        priority=priority,
-                        assigned_to_id=None,
-                        created_at=datetime.now(),
-                        deadline=deadline,
-                        status="todo"
+                        title=task_data["title"],
+                        description=task_data["description"],
+                        priority=task_data["priority"],
+                        deadline_days=task_data.get("estimated_days", 7)
                     )
-                    
-                    db.add(new_task)
-                    db.commit()
-                    db.refresh(new_task)
-                    
-                    created_task = {
-                        "id": new_task.id,
-                        "title": new_task.title,
-                        "description": new_task.description,
-                        "priority": new_task.priority,
-                        "status": "created_successfully",
-                        "deadline": deadline.isoformat()
-                    }
-                    
                     created_tasks.append(created_task)
-                        
                 except Exception as e:
-                    db.rollback()
-                    creation_errors.append({
-                        "task": task_data.get("title", "Unknown"),
-                        "error": str(e)
-                    })
-            
-            return {
-                "message": f"Successfully created {len(created_tasks)} tasks" + 
-                          (f" with {len(creation_errors)} errors" if creation_errors else ""),
-                "created_tasks": created_tasks,
-                "suggested_tasks": suggested_tasks,
-                "errors": creation_errors if creation_errors else None,
-                "auto_created": True
-            }
+                    print(f"Failed to create task '{task_data['title']}': {e}")
         
-        else:
-            # Just return suggestions without creating
-            return {
-                "message": "Task suggestions generated successfully",
-                "suggested_tasks": suggested_tasks,
-                "auto_created": False,
-                "instructions": "Set auto_create=True to automatically create these tasks"
-            }
-            
-    except Exception as e:
-        print(f"Error in ai_smart_task_creation: {str(e)}")
         return {
-            "error": "Failed to process task creation request",
-            "details": str(e),
-            "fallback_suggestion": {
-                "title": f"Task: {description[:50]}...",
-                "description": description,
-                "priority": "medium",
-                "estimated_days": 7
-            }
+            "suggested_tasks": suggested_tasks,
+            "created_tasks": created_tasks,
+            "success": len(created_tasks) > 0 if auto_create else False,
+            "auto_created": auto_create
         }
+    except Exception as e:
+        return {"error": f"Failed to create smart tasks: {str(e)}"}

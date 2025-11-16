@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 // Helper function to handle API responses
 const handleResponse = async (response) => {
@@ -30,6 +30,11 @@ export const getUserByClerkId = async (clerkId) => {
   const response = await fetch(`${API_BASE_URL}/users?clerkId=${clerkId}`);
   const data = await handleResponse(response);
   return Array.isArray(data) ? data[0] : null;
+};
+
+export const getUserById = async (userId) => {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}`);
+  return handleResponse(response);
 };
 
 export const getUsers = async (skip = 0, limit = 100) => {
@@ -153,59 +158,57 @@ export const deleteTask = async (taskId) => {
   return handleResponse(response);
 };
 
-// AI API calls
-export const summarizeTask = async (description) => {
-  const response = await fetch(`${API_BASE_URL}/ai/summarize_task`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ description }),
-  });
-  return handleResponse(response);
-};
+// AI API calls - NOTE: Some endpoints are not implemented in backend yet
+// export const summarizeTask = async (description) => {
+//   const response = await fetch(`${API_BASE_URL}/ai/summarize_task`, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({ description }),
+//   });
+//   return handleResponse(response);
+// };
 
-export const suggestTasks = async (projectDescription) => {
-  const response = await fetch(`${API_BASE_URL}/ai/suggest_tasks`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ project_description: projectDescription }),
-  });
-  return handleResponse(response);
-};
+// export const suggestTasks = async (projectDescription) => {
+//   const response = await fetch(`${API_BASE_URL}/ai/suggest_tasks`, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({ project_description: projectDescription }),
+//   });
+//   return handleResponse(response);
+// };
 
-export const analyzeComment = async (commentContent) => {
-  const response = await fetch(`${API_BASE_URL}/ai/analyze_comment`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ comment_content: commentContent }),
-  });
-  return handleResponse(response);
-};
+// export const analyzeComment = async (commentContent) => {
+//   const response = await fetch(`${API_BASE_URL}/ai/analyze_comment`, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({ comment_content: commentContent }),
+//   });
+//   return handleResponse(response);
+// };
 
-export const complexTaskAssistant = async (query) => {
-  const response = await fetch(`${API_BASE_URL}/ai/complex_task_assistant`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query }),
-  });
-  return handleResponse(response);
-};
-
-
+// export const complexTaskAssistant = async (query) => {
+//   const response = await fetch(`${API_BASE_URL}/ai/complex_task_assistant`, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({ query }),
+//   });
+//   return handleResponse(response);
+// };
 
 // Add this function to your API utilities file (where getTasks, getProjects are defined)
 
 export const smartTaskCreation = async (userId, projectId, description, autoCreate = false) => {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
   
-  const response = await fetch(`${API_BASE_URL}/ai/smart-task-creation`, {
+  const response = await fetch(`${API_BASE_URL}/ai/smart_task_creation`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

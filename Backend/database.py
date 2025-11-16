@@ -3,19 +3,14 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-
-# Load environment variables from .env file (optional, for local development)
-load_dotenv()
 
 # --- DATABASE CONFIGURATION ---
-# Replace with your actual RDS PostgreSQL connection string.
-# It's STRONGLY recommended to use environment variables for these details.
-# Example format: "postgresql://db_user:db_password@your-rds-instance-endpoint.region.rds.amazonaws.com:5432/your_dbname"
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:planora123@planora-database.crs4aw0sswvj.eu-north-1.rds.amazonaws.com:5432/postgres")
+# Use SQLite for local database storage
+# The database file will be created in the backend directory
+DATABASE_URL = "sqlite:///./planora.db"
 
-# SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+# SQLAlchemy engine for SQLite
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 # SessionLocal class, instances of this class will be actual database sessions
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

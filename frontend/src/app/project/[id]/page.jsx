@@ -9,7 +9,7 @@ import EditTaskModal from "../../../components/EditTaskModal";
 import { useToast } from "../../../hooks/useToast";
 import {
   getProject,
-  getUserByClerkId,
+  getUserById,
   getUsers,
   updateTask,
   getTasks,
@@ -29,8 +29,8 @@ const fetchTasks = async (projectId) => {
   return await getTasks({ project_id: projectId });
 };
 
-const fetchUserByClerkId = async (clerkId) => {
-  return await getUserByClerkId(clerkId);
+const fetchUserById = async (userId) => {
+  return await getUserById(userId);
 };
 
 export default function ProjectPage({ params }) {
@@ -45,7 +45,7 @@ export default function ProjectPage({ params }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const { addToast } = useToast();
 
-  // SWR hooks for data fetching with auto-refresh
+  // SWR hooks for data fetching
   const { 
     data: project, 
     error: projectError, 
@@ -54,7 +54,6 @@ export default function ProjectPage({ params }) {
     isLoaded && isSignedIn && projectId ? `project-${projectId}` : null,
     () => fetchProject(projectId),
     {
-      refreshInterval: 5000, // Auto-refresh every 5 seconds
       revalidateOnFocus: true,
       revalidateOnReconnect: true
     }
@@ -68,7 +67,6 @@ export default function ProjectPage({ params }) {
     isLoaded && isSignedIn ? 'users' : null,
     fetchUsers,
     {
-      refreshInterval: 5000,
       revalidateOnFocus: true,
       revalidateOnReconnect: true
     }
@@ -82,7 +80,6 @@ export default function ProjectPage({ params }) {
     isLoaded && isSignedIn && projectId ? `tasks-${projectId}` : null,
     () => fetchTasks(projectId),
     {
-      refreshInterval: 5000,
       revalidateOnFocus: true,
       revalidateOnReconnect: true
     }
@@ -94,9 +91,8 @@ export default function ProjectPage({ params }) {
     isLoading: ownerLoading 
   } = useSWR(
     project?.owner_id ? `owner-${project.owner_id}` : null,
-    () => fetchUserByClerkId(project.owner_id),
+    () => fetchUserById(project.owner_id),
     {
-      refreshInterval: 5000,
       revalidateOnFocus: true,
       revalidateOnReconnect: true
     }
